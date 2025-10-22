@@ -99,8 +99,8 @@ export default function TermsScreen() {
           <Text style={styles.paragraph}>
             For questions about these Terms and Conditions, please contact us at:{'\n\n'}
             Mahnoor LLC{'\n'}
-            Email: support@travelmakkah.com{'\n'}
-            Website: www.travelmakkah.com
+            Email: support@mahnoor.online{'\n'}
+            Website: www.mahnoor.online/app
           </Text>
         </View>
 
