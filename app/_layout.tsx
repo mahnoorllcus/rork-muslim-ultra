@@ -12,6 +12,7 @@ import { TranslationProvider } from "@/providers/TranslationProvider";
 import { LocationProvider } from "@/providers/LocationProvider";
 import { LocationPermissionModal } from "@/components/LocationPermissionModal";
 import { ThemeProvider, useTheme } from "@/providers/ThemeProvider";
+import { trpc, trpcClient } from "@/lib/trpc";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -200,28 +201,30 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <SafeAreaProvider>
-          <GestureHandlerRootView style={styles.container}>
-            <AuthProvider>
-              <SettingsProvider>
-                <ThemeProvider>
-                  <TranslationProvider>
-                    <LocationProvider>
-                      <PrayerTimesProvider>
-                        <>
-                          <RootLayoutNav />
-                          <LocationPermissionModal />
-                        </>
-                      </PrayerTimesProvider>
-                    </LocationProvider>
-                  </TranslationProvider>
-                </ThemeProvider>
-              </SettingsProvider>
-            </AuthProvider>
-          </GestureHandlerRootView>
-        </SafeAreaProvider>
-      </QueryClientProvider>
+      <trpc.Provider client={trpcClient} queryClient={queryClient}>
+        <QueryClientProvider client={queryClient}>
+          <SafeAreaProvider>
+            <GestureHandlerRootView style={styles.container}>
+              <AuthProvider>
+                <SettingsProvider>
+                  <ThemeProvider>
+                    <TranslationProvider>
+                      <LocationProvider>
+                        <PrayerTimesProvider>
+                          <>
+                            <RootLayoutNav />
+                            <LocationPermissionModal />
+                          </>
+                        </PrayerTimesProvider>
+                      </LocationProvider>
+                    </TranslationProvider>
+                  </ThemeProvider>
+                </SettingsProvider>
+              </AuthProvider>
+            </GestureHandlerRootView>
+          </SafeAreaProvider>
+        </QueryClientProvider>
+      </trpc.Provider>
     </ErrorBoundary>
   );
 }
