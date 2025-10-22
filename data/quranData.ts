@@ -1,0 +1,202 @@
+export interface Surah {
+  id: number;
+  name: string;
+  arabicName: string;
+  englishName: string;
+  verses: number;
+  revelationType: 'Meccan' | 'Medinan';
+}
+
+export interface Verse {
+  id: number;
+  surahId: number;
+  verseNumber: number;
+  arabic: string;
+  uthmanic?: string;
+  translation: string;
+  transliteration: string;
+}
+
+export const surahList: Surah[] = [
+  { id: 1, name: 'Al-Fatihah', arabicName: 'الفاتحة', englishName: 'The Opening', verses: 7, revelationType: 'Meccan' },
+  { id: 2, name: 'Al-Baqarah', arabicName: 'البقرة', englishName: 'The Cow', verses: 286, revelationType: 'Medinan' },
+  { id: 3, name: 'Ali \'Imran', arabicName: 'آل عمران', englishName: 'Family of Imran', verses: 200, revelationType: 'Medinan' },
+  { id: 4, name: 'An-Nisa', arabicName: 'النساء', englishName: 'The Women', verses: 176, revelationType: 'Medinan' },
+  { id: 5, name: 'Al-Ma\'idah', arabicName: 'المائدة', englishName: 'The Table Spread', verses: 120, revelationType: 'Medinan' },
+  { id: 6, name: 'Al-An\'am', arabicName: 'الأنعام', englishName: 'The Cattle', verses: 165, revelationType: 'Meccan' },
+  { id: 7, name: 'Al-A\'raf', arabicName: 'الأعراف', englishName: 'The Heights', verses: 206, revelationType: 'Meccan' },
+  { id: 8, name: 'Al-Anfal', arabicName: 'الأنفال', englishName: 'The Spoils of War', verses: 75, revelationType: 'Medinan' },
+  { id: 9, name: 'At-Tawbah', arabicName: 'التوبة', englishName: 'The Repentance', verses: 129, revelationType: 'Medinan' },
+  { id: 10, name: 'Yunus', arabicName: 'يونس', englishName: 'Jonah', verses: 109, revelationType: 'Meccan' },
+  { id: 11, name: 'Hud', arabicName: 'هود', englishName: 'Hud', verses: 123, revelationType: 'Meccan' },
+  { id: 12, name: 'Yusuf', arabicName: 'يوسف', englishName: 'Joseph', verses: 111, revelationType: 'Meccan' },
+  { id: 13, name: 'Ar-Ra\'d', arabicName: 'الرعد', englishName: 'The Thunder', verses: 43, revelationType: 'Medinan' },
+  { id: 14, name: 'Ibrahim', arabicName: 'إبراهيم', englishName: 'Abraham', verses: 52, revelationType: 'Meccan' },
+  { id: 15, name: 'Al-Hijr', arabicName: 'الحجر', englishName: 'The Rocky Tract', verses: 99, revelationType: 'Meccan' },
+  { id: 16, name: 'An-Nahl', arabicName: 'النحل', englishName: 'The Bee', verses: 128, revelationType: 'Meccan' },
+  { id: 17, name: 'Al-Isra', arabicName: 'الإسراء', englishName: 'The Night Journey', verses: 111, revelationType: 'Meccan' },
+  { id: 18, name: 'Al-Kahf', arabicName: 'الكهف', englishName: 'The Cave', verses: 110, revelationType: 'Meccan' },
+  { id: 19, name: 'Maryam', arabicName: 'مريم', englishName: 'Mary', verses: 98, revelationType: 'Meccan' },
+  { id: 20, name: 'Ta-Ha', arabicName: 'طه', englishName: 'Ta-Ha', verses: 135, revelationType: 'Meccan' },
+  { id: 21, name: 'Al-Anbiya', arabicName: 'الأنبياء', englishName: 'The Prophets', verses: 112, revelationType: 'Meccan' },
+  { id: 22, name: 'Al-Hajj', arabicName: 'الحج', englishName: 'The Pilgrimage', verses: 78, revelationType: 'Medinan' },
+  { id: 23, name: 'Al-Mu\'minun', arabicName: 'المؤمنون', englishName: 'The Believers', verses: 118, revelationType: 'Meccan' },
+  { id: 24, name: 'An-Nur', arabicName: 'النور', englishName: 'The Light', verses: 64, revelationType: 'Medinan' },
+  { id: 25, name: 'Al-Furqan', arabicName: 'الفرقان', englishName: 'The Criterion', verses: 77, revelationType: 'Meccan' },
+  { id: 26, name: 'Ash-Shu\'ara', arabicName: 'الشعراء', englishName: 'The Poets', verses: 227, revelationType: 'Meccan' },
+  { id: 27, name: 'An-Naml', arabicName: 'النمل', englishName: 'The Ant', verses: 93, revelationType: 'Meccan' },
+  { id: 28, name: 'Al-Qasas', arabicName: 'القصص', englishName: 'The Stories', verses: 88, revelationType: 'Meccan' },
+  { id: 29, name: 'Al-\'Ankabut', arabicName: 'العنكبوت', englishName: 'The Spider', verses: 69, revelationType: 'Meccan' },
+  { id: 30, name: 'Ar-Rum', arabicName: 'الروم', englishName: 'The Romans', verses: 60, revelationType: 'Meccan' },
+  { id: 31, name: 'Luqman', arabicName: 'لقمان', englishName: 'Luqman', verses: 34, revelationType: 'Meccan' },
+  { id: 32, name: 'As-Sajdah', arabicName: 'السجدة', englishName: 'The Prostration', verses: 30, revelationType: 'Meccan' },
+  { id: 33, name: 'Al-Ahzab', arabicName: 'الأحزاب', englishName: 'The Combined Forces', verses: 73, revelationType: 'Medinan' },
+  { id: 34, name: 'Saba', arabicName: 'سبأ', englishName: 'Sheba', verses: 54, revelationType: 'Meccan' },
+  { id: 35, name: 'Fatir', arabicName: 'فاطر', englishName: 'Originator', verses: 45, revelationType: 'Meccan' },
+  { id: 36, name: 'Ya-Sin', arabicName: 'يس', englishName: 'Ya Sin', verses: 83, revelationType: 'Meccan' },
+  { id: 37, name: 'As-Saffat', arabicName: 'الصافات', englishName: 'Those who set the Ranks', verses: 182, revelationType: 'Meccan' },
+  { id: 38, name: 'Sad', arabicName: 'ص', englishName: 'The Letter Sad', verses: 88, revelationType: 'Meccan' },
+  { id: 39, name: 'Az-Zumar', arabicName: 'الزمر', englishName: 'The Troops', verses: 75, revelationType: 'Meccan' },
+  { id: 40, name: 'Ghafir', arabicName: 'غافر', englishName: 'The Forgiver', verses: 85, revelationType: 'Meccan' },
+  { id: 41, name: 'Fussilat', arabicName: 'فصلت', englishName: 'Explained in Detail', verses: 54, revelationType: 'Meccan' },
+  { id: 42, name: 'Ash-Shura', arabicName: 'الشورى', englishName: 'The Consultation', verses: 53, revelationType: 'Meccan' },
+  { id: 43, name: 'Az-Zukhruf', arabicName: 'الزخرف', englishName: 'The Ornaments of Gold', verses: 89, revelationType: 'Meccan' },
+  { id: 44, name: 'Ad-Dukhan', arabicName: 'الدخان', englishName: 'The Smoke', verses: 59, revelationType: 'Meccan' },
+  { id: 45, name: 'Al-Jathiyah', arabicName: 'الجاثية', englishName: 'The Crouching', verses: 37, revelationType: 'Meccan' },
+  { id: 46, name: 'Al-Ahqaf', arabicName: 'الأحقاف', englishName: 'The Wind-Curved Sandhills', verses: 35, revelationType: 'Meccan' },
+  { id: 47, name: 'Muhammad', arabicName: 'محمد', englishName: 'Muhammad', verses: 38, revelationType: 'Medinan' },
+  { id: 48, name: 'Al-Fath', arabicName: 'الفتح', englishName: 'The Victory', verses: 29, revelationType: 'Medinan' },
+  { id: 49, name: 'Al-Hujurat', arabicName: 'الحجرات', englishName: 'The Rooms', verses: 18, revelationType: 'Medinan' },
+  { id: 50, name: 'Qaf', arabicName: 'ق', englishName: 'The Letter Qaf', verses: 45, revelationType: 'Meccan' },
+  { id: 51, name: 'Adh-Dhariyat', arabicName: 'الذاريات', englishName: 'The Winnowing Winds', verses: 60, revelationType: 'Meccan' },
+  { id: 52, name: 'At-Tur', arabicName: 'الطور', englishName: 'The Mount', verses: 49, revelationType: 'Meccan' },
+  { id: 53, name: 'An-Najm', arabicName: 'النجم', englishName: 'The Star', verses: 62, revelationType: 'Meccan' },
+  { id: 54, name: 'Al-Qamar', arabicName: 'القمر', englishName: 'The Moon', verses: 55, revelationType: 'Meccan' },
+  { id: 55, name: 'Ar-Rahman', arabicName: 'الرحمن', englishName: 'The Beneficent', verses: 78, revelationType: 'Medinan' },
+  { id: 56, name: 'Al-Waqi\'ah', arabicName: 'الواقعة', englishName: 'The Inevitable', verses: 96, revelationType: 'Meccan' },
+  { id: 57, name: 'Al-Hadid', arabicName: 'الحديد', englishName: 'The Iron', verses: 29, revelationType: 'Medinan' },
+  { id: 58, name: 'Al-Mujadila', arabicName: 'المجادلة', englishName: 'The Pleading Woman', verses: 22, revelationType: 'Medinan' },
+  { id: 59, name: 'Al-Hashr', arabicName: 'الحشر', englishName: 'The Exile', verses: 24, revelationType: 'Medinan' },
+  { id: 60, name: 'Al-Mumtahanah', arabicName: 'الممتحنة', englishName: 'She that is to be examined', verses: 13, revelationType: 'Medinan' },
+  { id: 61, name: 'As-Saff', arabicName: 'الصف', englishName: 'The Ranks', verses: 14, revelationType: 'Medinan' },
+  { id: 62, name: 'Al-Jumu\'ah', arabicName: 'الجمعة', englishName: 'The Congregation', verses: 11, revelationType: 'Medinan' },
+  { id: 63, name: 'Al-Munafiqun', arabicName: 'المنافقون', englishName: 'The Hypocrites', verses: 11, revelationType: 'Medinan' },
+  { id: 64, name: 'At-Taghabun', arabicName: 'التغابن', englishName: 'The Mutual Disillusion', verses: 18, revelationType: 'Medinan' },
+  { id: 65, name: 'At-Talaq', arabicName: 'الطلاق', englishName: 'The Divorce', verses: 12, revelationType: 'Medinan' },
+  { id: 66, name: 'At-Tahrim', arabicName: 'التحريم', englishName: 'The Prohibition', verses: 12, revelationType: 'Medinan' },
+  { id: 67, name: 'Al-Mulk', arabicName: 'الملك', englishName: 'The Sovereignty', verses: 30, revelationType: 'Meccan' },
+  { id: 68, name: 'Al-Qalam', arabicName: 'القلم', englishName: 'The Pen', verses: 52, revelationType: 'Meccan' },
+  { id: 69, name: 'Al-Haqqah', arabicName: 'الحاقة', englishName: 'The Reality', verses: 52, revelationType: 'Meccan' },
+  { id: 70, name: 'Al-Ma\'arij', arabicName: 'المعارج', englishName: 'The Ascending Stairways', verses: 44, revelationType: 'Meccan' },
+  { id: 71, name: 'Nuh', arabicName: 'نوح', englishName: 'Noah', verses: 28, revelationType: 'Meccan' },
+  { id: 72, name: 'Al-Jinn', arabicName: 'الجن', englishName: 'The Jinn', verses: 28, revelationType: 'Meccan' },
+  { id: 73, name: 'Al-Muzzammil', arabicName: 'المزمل', englishName: 'The Enshrouded One', verses: 20, revelationType: 'Meccan' },
+  { id: 74, name: 'Al-Muddaththir', arabicName: 'المدثر', englishName: 'The Cloaked One', verses: 56, revelationType: 'Meccan' },
+  { id: 75, name: 'Al-Qiyamah', arabicName: 'القيامة', englishName: 'The Resurrection', verses: 40, revelationType: 'Meccan' },
+  { id: 76, name: 'Al-Insan', arabicName: 'الإنسان', englishName: 'The Man', verses: 31, revelationType: 'Medinan' },
+  { id: 77, name: 'Al-Mursalat', arabicName: 'المرسلات', englishName: 'The Emissaries', verses: 50, revelationType: 'Meccan' },
+  { id: 78, name: 'An-Naba', arabicName: 'النبأ', englishName: 'The Tidings', verses: 40, revelationType: 'Meccan' },
+  { id: 79, name: 'An-Nazi\'at', arabicName: 'النازعات', englishName: 'Those who drag forth', verses: 46, revelationType: 'Meccan' },
+  { id: 80, name: 'Abasa', arabicName: 'عبس', englishName: 'He Frowned', verses: 42, revelationType: 'Meccan' },
+  { id: 81, name: 'At-Takwir', arabicName: 'التكوير', englishName: 'The Overthrowing', verses: 29, revelationType: 'Meccan' },
+  { id: 82, name: 'Al-Infitar', arabicName: 'الإنفطار', englishName: 'The Cleaving', verses: 19, revelationType: 'Meccan' },
+  { id: 83, name: 'Al-Mutaffifin', arabicName: 'المطففين', englishName: 'The Defrauding', verses: 36, revelationType: 'Meccan' },
+  { id: 84, name: 'Al-Inshiqaq', arabicName: 'الإنشقاق', englishName: 'The Splitting Open', verses: 25, revelationType: 'Meccan' },
+  { id: 85, name: 'Al-Buruj', arabicName: 'البروج', englishName: 'The Mansions of the Stars', verses: 22, revelationType: 'Meccan' },
+  { id: 86, name: 'At-Tariq', arabicName: 'الطارق', englishName: 'The Morning Star', verses: 17, revelationType: 'Meccan' },
+  { id: 87, name: 'Al-A\'la', arabicName: 'الأعلى', englishName: 'The Most High', verses: 19, revelationType: 'Meccan' },
+  { id: 88, name: 'Al-Ghashiyah', arabicName: 'الغاشية', englishName: 'The Overwhelming', verses: 26, revelationType: 'Meccan' },
+  { id: 89, name: 'Al-Fajr', arabicName: 'الفجر', englishName: 'The Dawn', verses: 30, revelationType: 'Meccan' },
+  { id: 90, name: 'Al-Balad', arabicName: 'البلد', englishName: 'The City', verses: 20, revelationType: 'Meccan' },
+  { id: 91, name: 'Ash-Shams', arabicName: 'الشمس', englishName: 'The Sun', verses: 15, revelationType: 'Meccan' },
+  { id: 92, name: 'Al-Layl', arabicName: 'الليل', englishName: 'The Night', verses: 21, revelationType: 'Meccan' },
+  { id: 93, name: 'Ad-Duhaa', arabicName: 'الضحى', englishName: 'The Morning Hours', verses: 11, revelationType: 'Meccan' },
+  { id: 94, name: 'Ash-Sharh', arabicName: 'الشرح', englishName: 'The Relief', verses: 8, revelationType: 'Meccan' },
+  { id: 95, name: 'At-Tin', arabicName: 'التين', englishName: 'The Fig', verses: 8, revelationType: 'Meccan' },
+  { id: 96, name: 'Al-\'Alaq', arabicName: 'العلق', englishName: 'The Clot', verses: 19, revelationType: 'Meccan' },
+  { id: 97, name: 'Al-Qadr', arabicName: 'القدر', englishName: 'The Power', verses: 5, revelationType: 'Meccan' },
+  { id: 98, name: 'Al-Bayyinah', arabicName: 'البينة', englishName: 'The Clear Proof', verses: 8, revelationType: 'Medinan' },
+  { id: 99, name: 'Az-Zalzalah', arabicName: 'الزلزلة', englishName: 'The Earthquake', verses: 8, revelationType: 'Medinan' },
+  { id: 100, name: 'Al-\'Adiyat', arabicName: 'العاديات', englishName: 'The Courser', verses: 11, revelationType: 'Meccan' },
+  { id: 101, name: 'Al-Qari\'ah', arabicName: 'القارعة', englishName: 'The Calamity', verses: 11, revelationType: 'Meccan' },
+  { id: 102, name: 'At-Takathur', arabicName: 'التكاثر', englishName: 'The Rivalry in world increase', verses: 8, revelationType: 'Meccan' },
+  { id: 103, name: 'Al-\'Asr', arabicName: 'العصر', englishName: 'The Declining Day', verses: 3, revelationType: 'Meccan' },
+  { id: 104, name: 'Al-Humazah', arabicName: 'الهمزة', englishName: 'The Traducer', verses: 9, revelationType: 'Meccan' },
+  { id: 105, name: 'Al-Fil', arabicName: 'الفيل', englishName: 'The Elephant', verses: 5, revelationType: 'Meccan' },
+  { id: 106, name: 'Quraysh', arabicName: 'قريش', englishName: 'Quraysh', verses: 4, revelationType: 'Meccan' },
+  { id: 107, name: 'Al-Ma\'un', arabicName: 'الماعون', englishName: 'The Small Kindnesses', verses: 7, revelationType: 'Meccan' },
+  { id: 108, name: 'Al-Kawthar', arabicName: 'الكوثر', englishName: 'The Abundance', verses: 3, revelationType: 'Meccan' },
+  { id: 109, name: 'Al-Kafirun', arabicName: 'الكافرون', englishName: 'The Disbelievers', verses: 6, revelationType: 'Meccan' },
+  { id: 110, name: 'An-Nasr', arabicName: 'النصر', englishName: 'The Divine Support', verses: 3, revelationType: 'Medinan' },
+  { id: 111, name: 'Al-Masad', arabicName: 'المسد', englishName: 'The Palm Fiber', verses: 5, revelationType: 'Meccan' },
+  { id: 112, name: 'Al-Ikhlas', arabicName: 'الإخلاص', englishName: 'The Sincerity', verses: 4, revelationType: 'Meccan' },
+  { id: 113, name: 'Al-Falaq', arabicName: 'الفلق', englishName: 'The Daybreak', verses: 5, revelationType: 'Meccan' },
+  { id: 114, name: 'An-Nas', arabicName: 'الناس', englishName: 'Mankind', verses: 6, revelationType: 'Meccan' },
+];
+
+// Sample verses for Al-Fatihah with Uthmanic script
+export const sampleVerses: Verse[] = [
+  {
+    id: 1,
+    surahId: 1,
+    verseNumber: 1,
+    arabic: 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ',
+    uthmanic: 'بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ',
+    translation: 'In the name of Allah, the Entirely Merciful, the Especially Merciful.',
+    transliteration: 'Bismillah hir rahman nir raheem'
+  },
+  {
+    id: 2,
+    surahId: 1,
+    verseNumber: 2,
+    arabic: 'الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ',
+    uthmanic: 'ٱلۡحَمۡدُ لِلَّهِ رَبِّ ٱلۡعَٰلَمِينَ',
+    translation: '[All] praise is [due] to Allah, Lord of the worlds -',
+    transliteration: 'Alhamdu lillahi rabbil \'alameen'
+  },
+  {
+    id: 3,
+    surahId: 1,
+    verseNumber: 3,
+    arabic: 'الرَّحْمَٰنِ الرَّحِيمِ',
+    uthmanic: 'ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ',
+    translation: 'The Entirely Merciful, the Especially Merciful,',
+    transliteration: 'Ar-Rahman nir raheem'
+  },
+  {
+    id: 4,
+    surahId: 1,
+    verseNumber: 4,
+    arabic: 'مَالِكِ يَوْمِ الدِّينِ',
+    uthmanic: 'مَٰلِكِ يَوۡمِ ٱلدِّينِ',
+    translation: 'Sovereign of the Day of Recompense.',
+    transliteration: 'Maliki yawmid deen'
+  },
+  {
+    id: 5,
+    surahId: 1,
+    verseNumber: 5,
+    arabic: 'إِيَّاكَ نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ',
+    uthmanic: 'إِيَّاكَ نَعۡبُدُ وَإِيَّاكَ نَسۡتَعِينُ',
+    translation: 'It is You we worship and You we ask for help.',
+    transliteration: 'Iyyaka na\'budu wa iyyaka nasta\'een'
+  },
+  {
+    id: 6,
+    surahId: 1,
+    verseNumber: 6,
+    arabic: 'اهْدِنَا الصِّرَاطَ الْمُسْتَقِيمَ',
+    uthmanic: 'ٱهۡدِنَا ٱلصِّرَٰطَ ٱلۡمُسۡتَقِيمَ',
+    translation: 'Guide us to the straight path -',
+    transliteration: 'Ihdinas siratal mustaqeem'
+  },
+  {
+    id: 7,
+    surahId: 1,
+    verseNumber: 7,
+    arabic: 'صِرَاطَ الَّذِينَ أَنْعَمْتَ عَلَيْهِمْ غَيْرِ الْمَغْضُوبِ عَلَيْهِمْ وَلَا الضَّالِّينَ',
+    uthmanic: 'صِرَٰطَ ٱلَّذِينَ أَنۡعَمۡتَ عَلَيۡهِمۡ غَيۡرِ ٱلۡمَغۡضُوبِ عَلَيۡهِمۡ وَلَا ٱلضَّآلِّينَ',
+    translation: 'The path of those upon whom You have bestowed favor, not of those who have evoked [Your] anger or of those who are astray.',
+    transliteration: 'Siratal lazeena an\'amta \'alaihim ghairil maghdubi \'alaihim walad dalleen'
+  }
+];
