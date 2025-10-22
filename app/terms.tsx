@@ -100,7 +100,7 @@ export default function TermsScreen() {
             For questions about these Terms and Conditions, please contact us at:{'\n\n'}
             Mahnoor LLC{'\n'}
             Email: support@mahnoor.online{'\n'}
-            Website: www.mahnoor.online/app
+            Website: www.mahnoor.online/apps
           </Text>
         </View>
 
