@@ -19,6 +19,7 @@ export const translations = {
     next: "Next",
     previous: "Previous",
     done: "Done",
+    of: "of",
     
     // More Screen
     account: "Account",
@@ -175,7 +176,6 @@ export const translations = {
     umrahGuideSubtitle: "Complete step-by-step guidance for your spiritual journey",
     yourProgress: "Your Progress",
     stepsCompleted: "steps completed",
-    of: "of",
     duas: "Duas",
     map: "Map",
     times: "Times",
@@ -321,6 +321,7 @@ export const translations = {
     next: "পরবর্তী",
     previous: "পূর্ববর্তী",
     done: "সম্পন্ন",
+    of: "এর",
     
     // More Screen
     account: "অ্যাকাউন্ট",
@@ -477,7 +478,6 @@ export const translations = {
     umrahGuideSubtitle: "আপনার আধ্যাত্মিক যাত্রার জন্য সম্পূর্ণ ধাপে ধাপে নির্দেশনা",
     yourProgress: "আপনার অগ্রগতি",
     stepsCompleted: "ধাপ সম্পন্ন",
-    of: "এর",
     duas: "দোয়া",
     map: "মানচিত্র",
     times: "সময়",
@@ -623,6 +623,7 @@ export const translations = {
     next: "التالي",
     previous: "السابق",
     done: "تم",
+    of: "من",
     
     // More Screen
     account: "الحساب",
@@ -779,7 +780,6 @@ export const translations = {
     umrahGuideSubtitle: "إرشاد كامل خطوة بخطوة لرحلتك الروحية",
     yourProgress: "تقدمك",
     stepsCompleted: "خطوات مكتملة",
-    of: "من",
     duas: "الأدعية",
     map: "الخريطة",
     times: "الأوقات",
@@ -925,6 +925,7 @@ export const translations = {
     next: "اگلا",
     previous: "پچھلا",
     done: "مکمل",
+    of: "کا",
     
     // More Screen
     account: "اکاؤنٹ",
@@ -1163,6 +1164,7 @@ export const translations = {
     next: "Berikutnya",
     previous: "Sebelumnya",
     done: "Selesai",
+    of: "dari",
     
     // More Screen
     account: "Akun",
@@ -1401,6 +1403,7 @@ export const translations = {
     next: "İleri",
     previous: "Önceki",
     done: "Tamamlandı",
+    of: "of",
     
     // More Screen
     account: "Hesap",

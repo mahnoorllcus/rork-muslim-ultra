@@ -19,7 +19,7 @@ import { Stack } from 'expo-router';
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
-  const { isDarkMode } = useTheme();
+  const { isDark } = useTheme();
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -53,12 +53,12 @@ export default function ForgotPasswordScreen() {
   };
 
   const colors = {
-    background: isDarkMode ? '#121212' : '#FFFFFF',
-    card: isDarkMode ? '#1E1E1E' : '#F5F5F5',
-    text: isDarkMode ? '#FFFFFF' : '#000000',
-    subtext: isDarkMode ? '#B0B0B0' : '#666666',
+    background: isDark ? '#121212' : '#FFFFFF',
+    card: isDark ? '#1E1E1E' : '#F5F5F5',
+    text: isDark ? '#FFFFFF' : '#000000',
+    subtext: isDark ? '#B0B0B0' : '#666666',
     primary: '#4CAF50',
-    border: isDarkMode ? '#333333' : '#E0E0E0',
+    border: isDark ? '#333333' : '#E0E0E0',
   };
 
   return (

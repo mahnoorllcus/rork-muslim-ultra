@@ -21,7 +21,7 @@ import { Stack } from 'expo-router';
 export default function LoginScreen() {
   const router = useRouter();
   const { theme } = useTheme();
-  const { login } = useAuth();
+  const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -41,15 +41,15 @@ export default function LoginScreen() {
     setIsLoading(true);
     
     // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false);
-      login({
-        id: '1',
-        name: 'User',
-        email: email,
-        profilePicture: null,
-      });
-      router.replace('/(tabs)/home');
+    setTimeout(async () => {
+      try {
+        await signIn(email, password);
+        setIsLoading(false);
+        router.replace('/(tabs)/home');
+      } catch (error) {
+        setIsLoading(false);
+        Alert.alert('Error', 'Failed to sign in. Please try again.');
+      }
     }, 2000);
   };
 
