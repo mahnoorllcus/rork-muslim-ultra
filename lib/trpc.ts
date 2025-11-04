@@ -10,9 +10,10 @@ const getBaseUrl = () => {
     return process.env.EXPO_PUBLIC_RORK_API_BASE_URL;
   }
 
-  throw new Error(
-    "No base url found, please set EXPO_PUBLIC_RORK_API_BASE_URL"
+  console.warn(
+    "EXPO_PUBLIC_RORK_API_BASE_URL not set, using fallback URL"
   );
+  return "https://p8ve4rlm5bq3ysg6qfe9x.rork.live";
 };
 
 export const trpcClient = trpc.createClient({

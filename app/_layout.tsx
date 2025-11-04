@@ -16,7 +16,20 @@ import { trpc, trpcClient } from "@/lib/trpc";
 
 SplashScreen.preventAutoHideAsync();
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 2,
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+      staleTime: 5 * 60 * 1000,
+      networkMode: 'offlineFirst',
+    },
+    mutations: {
+      retry: 1,
+      networkMode: 'offlineFirst',
+    },
+  },
+});
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component<
@@ -184,20 +197,39 @@ function RootLayoutNav() {
       <Stack.Screen name="nurani-qaida" options={{ title: 'Nurani Qaida' }} />
       <Stack.Screen name="ammapara" options={{ title: 'Ammapara' }} />
       <Stack.Screen name="asmaul-husna" options={{ title: 'Asmaul Husna' }} />
+      <Stack.Screen name="arabic-alphabet" options={{ title: 'Arabic Alphabet' }} />
     </Stack>
   );
 }
 
 export default function RootLayout() {
+  const [isReady, setIsReady] = React.useState(false);
+
   useEffect(() => {
-    SplashScreen.hideAsync();
-    
-    // Set status bar style for Android
-    if (Platform.OS === 'android') {
-      StatusBar.setBackgroundColor('#1B5E20', true);
-      StatusBar.setBarStyle('light-content', true);
+    async function prepare() {
+      try {
+        await SplashScreen.hideAsync();
+        
+        // Set status bar style for Android
+        if (Platform.OS === 'android') {
+          StatusBar.setBackgroundColor('#1B5E20', true);
+          StatusBar.setBarStyle('light-content', true);
+        }
+        
+        setIsReady(true);
+      } catch (error) {
+        console.error('Error during app initialization:', error);
+        // Still set ready to true to allow the app to load
+        setIsReady(true);
+      }
     }
+
+    prepare();
   }, []);
+
+  if (!isReady) {
+    return null;
+  }
 
   return (
     <ErrorBoundary>
