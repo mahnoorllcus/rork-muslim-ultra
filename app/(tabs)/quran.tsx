@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
   Modal,
@@ -12,8 +11,8 @@ import {
   Platform,
 } from 'react-native';
 
-import { Stack, useLocalSearchParams } from 'expo-router';
-import { ChevronLeft, ChevronRight, X, Bookmark, Settings, Play, Pause, Volume2 } from 'lucide-react-native';
+import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { ChevronLeft, ChevronRight, X, Bookmark, Settings, Play, Pause } from 'lucide-react-native';
 import { useTheme } from '@/providers/ThemeProvider';
 import { useTranslation } from '@/providers/TranslationProvider';
 import { surahList, sampleVerses, Surah, Verse } from '@/data/quranData';
@@ -25,8 +24,8 @@ export default function QuranTab() {
   const { t } = useTranslation();
   const params = useLocalSearchParams();
   const initialSurahId = params.surah ? parseInt(params.surah as string, 10) : 1;
-  const [selectedSurah, setSelectedSurah] = useState<Surah>(surahList.find(s => s.id === initialSurahId) || surahList[0]);
-  const [allVerses, setAllVerses] = useState<Verse[]>(sampleVerses);
+  const [selectedSurah, setSelectedSurah] = useState((surahList.find((s: Surah) => s.id === initialSurahId) || surahList[0]) as Surah);
+  const [allVerses, setAllVerses] = useState(sampleVerses as Verse[]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showSurahList, setShowSurahList] = useState(false);
@@ -34,12 +33,12 @@ export default function QuranTab() {
   const [fontSize, setFontSize] = useState(18);
   const [showTranslation, setShowTranslation] = useState(true);
   const [showTransliteration, setShowTransliteration] = useState(false);
-  const [scriptType, setScriptType] = useState<'standard' | 'uthmanic'>('standard');
-  const [bookmarks, setBookmarks] = useState<number[]>([]);
+  const [scriptType, setScriptType] = useState('standard' as 'standard' | 'uthmanic');
+  const [bookmarks, setBookmarks] = useState([] as number[]);
   const [isLoading, setIsLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentSound, setCurrentSound] = useState<Audio.Sound | null>(null);
-  const scrollViewRef = useRef<ScrollView>(null);
+  const [currentSound, setCurrentSound] = useState(null as any);
+  const scrollViewRef = useRef(null as any);
 
   // Function to get Uthmanic script text
   const getUthmanicText = (verse: Verse): string => {
@@ -48,12 +47,12 @@ export default function QuranTab() {
   };
 
   useEffect(() => {
-    loadSettings();
-    loadBookmarks();
+    void loadSettings();
+    void loadBookmarks();
   }, []);
 
   useEffect(() => {
-    loadVerses(selectedSurah.id);
+    void loadVerses(selectedSurah.id);
   }, [selectedSurah]);
 
   const loadSettings = async () => {
@@ -97,7 +96,7 @@ export default function QuranTab() {
 
   const toggleBookmark = async (verseId: number) => {
     const updated = bookmarks.includes(verseId)
-      ? bookmarks.filter(id => id !== verseId)
+      ? bookmarks.filter((id: number) => id !== verseId)
       : [...bookmarks, verseId];
     setBookmarks(updated);
     await AsyncStorage.setItem('quranBookmarks', JSON.stringify(updated));
@@ -183,64 +182,119 @@ export default function QuranTab() {
     }
   };
 
-  const toggleAudio = useCallback(async () => {
-    if (isPlaying) {
+  const stopAudio = useCallback(async () => {
+    try {
       if (currentSound) {
+        console.log('Stopping Quran audio playback');
+        await currentSound.stopAsync();
+        await currentSound.unloadAsync();
+        setCurrentSound(null);
+      }
+    } catch (error) {
+      console.error('Error stopping audio:', error);
+    } finally {
+      setIsPlaying(false);
+    }
+  }, [currentSound]);
+
+  const playSurahAudio = useCallback(async (surahId: number) => {
+    try {
+      console.log('Preparing Quran audio for surah:', surahId);
+
+      if (Platform.OS !== 'web') {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+      }
+
+      if (currentSound) {
+        await currentSound.unloadAsync();
+        setCurrentSound(null);
+      }
+
+      const audioUrl = `https://cdn.islamic.network/quran/audio/128/ar.alafasy/${surahId}.mp3`;
+      console.log('Loading Quran audio URL:', audioUrl);
+
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: audioUrl },
+        { shouldPlay: true, volume: 1.0 },
+        (status: any) => {
+          if (status.isLoaded && status.didJustFinish) {
+            console.log('Quran audio playback finished for surah:', surahId);
+            setIsPlaying(false);
+          }
+        }
+      );
+
+      setCurrentSound(sound);
+      setIsPlaying(true);
+    } catch (error) {
+      console.error('Error playing audio:', error);
+      setIsPlaying(false);
+    }
+  }, [currentSound]);
+
+  const toggleAudio = useCallback(async () => {
+    try {
+      if (isPlaying && currentSound) {
+        console.log('Pausing Quran audio');
         await currentSound.pauseAsync();
         setIsPlaying(false);
+        return;
       }
-    } else {
-      try {
-        if (Platform.OS !== 'web') {
-          await Audio.setAudioModeAsync({
-            allowsRecordingIOS: false,
-            playsInSilentModeIOS: true,
-            shouldDuckAndroid: true,
-            playThroughEarpieceAndroid: false,
-          });
-        }
 
-        if (currentSound) {
-          await currentSound.playAsync();
-          setIsPlaying(true);
-        } else {
-          const reciterNumber = '7';
-          const audioUrl = `https://cdn.islamic.network/quran/audio/128/ar.alafasy/${selectedSurah.id}.mp3`;
-          
-          const { sound } = await Audio.Sound.createAsync(
-            { uri: audioUrl },
-            { shouldPlay: true, volume: 1.0 },
-            (status) => {
-              if (status.isLoaded && status.didJustFinish) {
-                setIsPlaying(false);
-              }
-            }
-          );
-          
-          setCurrentSound(sound);
-          setIsPlaying(true);
-        }
-      } catch (error) {
-        console.error('Error playing audio:', error);
+      if (currentSound) {
+        console.log('Resuming Quran audio');
+        await currentSound.playAsync();
+        setIsPlaying(true);
+        return;
       }
+
+      await playSurahAudio(selectedSurah.id);
+    } catch (error) {
+      console.error('Error toggling audio:', error);
+      setIsPlaying(false);
     }
-  }, [isPlaying, currentSound, selectedSurah.id]);
+  }, [currentSound, isPlaying, playSurahAudio, selectedSurah.id]);
+
+  const changeSurahFromControls = useCallback(async (direction: 'prev' | 'next') => {
+    const currentIndex = surahList.findIndex((s: Surah) => s.id === selectedSurah.id);
+    const targetIndex = direction === 'prev' ? currentIndex - 1 : currentIndex + 1;
+    const targetSurah = surahList[targetIndex];
+
+    if (!targetSurah) {
+      return;
+    }
+
+    const shouldKeepPlaying = isPlaying;
+    console.log('Changing surah from playback controls to:', targetSurah.id, targetSurah.name);
+
+    await stopAudio();
+    setSelectedSurah(targetSurah);
+
+    if (shouldKeepPlaying) {
+      await playSurahAudio(targetSurah.id);
+    }
+  }, [isPlaying, playSurahAudio, selectedSurah.id, stopAudio]);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        void stopAudio();
+      };
+    }, [stopAudio])
+  );
 
   useEffect(() => {
     return () => {
       if (currentSound) {
-        currentSound.unloadAsync();
+        void currentSound.unloadAsync();
       }
     };
-  }, []);
-
-  useEffect(() => {
-    if (currentSound) {
-      currentSound.unloadAsync();
-      setCurrentSound(null);
-      setIsPlaying(false);
-    }
-  }, [selectedSurah.id]);
+  }, [currentSound]);
 
 
 
@@ -370,21 +424,51 @@ export default function QuranTab() {
           </Text>
         </TouchableOpacity>
         
-        {/* Audio Controls */}
-        <TouchableOpacity
-          style={[styles.audioControlButton, { backgroundColor: colors.primary }]}
-          onPress={toggleAudio}
-          activeOpacity={0.7}
-        >
-          {isPlaying ? (
-            <Pause size={20} color="#FFFFFF" />
-          ) : (
-            <Play size={20} color="#FFFFFF" />
-          )}
-          <Text style={styles.audioControlText}>
-            {isPlaying ? 'Pause' : 'Listen'}
-          </Text>
-        </TouchableOpacity>
+        <View style={[styles.audioControlsRow, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(27,94,32,0.06)' }]}> 
+          <TouchableOpacity
+            style={[
+              styles.audioSideButton,
+              { backgroundColor: colors.background },
+              selectedSurah.id === 1 && styles.audioButtonDisabled,
+            ]}
+            onPress={() => {
+              void changeSurahFromControls('prev');
+            }}
+            disabled={selectedSurah.id === 1}
+            activeOpacity={0.7}
+            testID="quran-previous-button"
+          >
+            <ChevronLeft size={18} color={selectedSurah.id === 1 ? colors.textSecondary : colors.text} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.audioPlayButton, { backgroundColor: colors.primary }]}
+            onPress={() => {
+              void toggleAudio();
+            }}
+            activeOpacity={0.85}
+            testID="quran-play-pause-button"
+          >
+            {isPlaying ? <Pause size={18} color="#FFFFFF" /> : <Play size={18} color="#FFFFFF" />}
+            <Text style={styles.audioPlayButtonText}>{isPlaying ? 'Pause' : 'Play'}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.audioSideButton,
+              { backgroundColor: colors.background },
+              selectedSurah.id === 114 && styles.audioButtonDisabled,
+            ]}
+            onPress={() => {
+              void changeSurahFromControls('next');
+            }}
+            disabled={selectedSurah.id === 114}
+            activeOpacity={0.7}
+            testID="quran-next-button"
+          >
+            <ChevronRight size={18} color={selectedSurah.id === 114 ? colors.textSecondary : colors.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Verses */}
@@ -397,7 +481,7 @@ export default function QuranTab() {
           ref={scrollViewRef as any}
           data={allVerses}
           renderItem={renderVerse}
-          keyExtractor={(item) => item.id.toString()}
+          keyExtractor={(item: Verse) => item.id.toString()}
           contentContainerStyle={styles.versesContainer}
           showsVerticalScrollIndicator={false}
         />
@@ -429,8 +513,8 @@ export default function QuranTab() {
             
             <FlatList
               data={filteredSurahs}
-              keyExtractor={(item) => item.id.toString()}
-              renderItem={({ item }) => (
+              keyExtractor={(item: Surah) => item.id.toString()}
+              renderItem={({ item }: { item: Surah }) => (
                 <TouchableOpacity
                   style={[
                     styles.surahItem,
@@ -479,7 +563,7 @@ export default function QuranTab() {
               <Text style={[styles.modalTitle, { color: colors.text }]}>{t('settings') || 'Settings'}</Text>
               <TouchableOpacity onPress={() => {
                 setShowSettings(false);
-                saveSettings();
+                void saveSettings();
               }}>
                 <X size={24} color={colors.text} />
               </TouchableOpacity>
@@ -607,19 +691,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  audioControlButton: {
+  audioControlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     alignSelf: 'center',
+    gap: 12,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 4,
+    paddingVertical: 10,
+    borderRadius: 24,
   },
-  audioControlText: {
+  audioSideButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  audioPlayButton: {
+    minWidth: 112,
+    height: 48,
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  audioPlayButtonText: {
     color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  audioButtonDisabled: {
+    opacity: 0.45,
   },
   surahName: {
     fontSize: 24,
