@@ -10,6 +10,8 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["react", "react-native"]
+    "resolvePackageJsonExports": true,
+    "resolvePackageJsonImports": true,
+    "useDefineForClassFields": true
   }
 }
