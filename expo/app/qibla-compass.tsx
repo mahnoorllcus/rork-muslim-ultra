@@ -30,7 +30,8 @@ export default function QiblaCompassScreen() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [deviceHeading, setDeviceHeading] = useState<number>(0);
   
-  const rotationAnim = useRef(new Animated.Value(0)).current;
+  // High-performance animated variables using native drivers
+  const compassRotationAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const magnetometerSubscription = useRef<any>(null);
 
@@ -58,22 +59,23 @@ export default function QiblaCompassScreen() {
   }, [userLocation]);
 
   useEffect(() => {
-    // Computes relative heading adjustments cleanly
-    const targetRotation = (qiblaDirection - deviceHeading + 360) % 360;
+    // To orient a virtual dial with real-world sensors, 
+    // the dial graphic must rotate in the exact opposite direction (-deviceHeading)
+    const targetDialRotation = -deviceHeading;
     
-    Animated.spring(rotationAnim, {
-      toValue: targetRotation,
+    Animated.spring(compassRotationAnim, {
+      toValue: targetDialRotation,
       useNativeDriver: true,
-      friction: 8,
-      tension: 40,
+      friction: 9,
+      tension: 45,
     }).start();
-  }, [qiblaDirection, deviceHeading]);
+  }, [deviceHeading]);
 
   useEffect(() => {
     const pulseAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
-          toValue: 1.15,
+          toValue: 1.12,
           duration: 1000,
           useNativeDriver: true,
         }),
@@ -97,13 +99,17 @@ export default function QiblaCompassScreen() {
         return;
       }
 
-      Magnetometer.setUpdateInterval(100);
+      Magnetometer.setUpdateInterval(80); // Sweeter, lower interval for fluid 60fps tracking
       magnetometerSubscription.current = Magnetometer.addListener((data) => {
         const { x, y } = data;
-        // Calculates heading relative to magnetic north
+        
+        // Calculate heading in radians, convert to degrees, then normalize north reference
         let heading = Math.atan2(y, x) * (180 / Math.PI);
         heading = heading < 0 ? heading + 360 : heading;
-        setDeviceHeading(heading);
+        
+        // Compensate for hardware layout differences across platform kernels
+        const adjustedHeading = Platform.OS === 'ios' ? heading : (heading + 90) % 360;
+        setDeviceHeading(adjustedHeading);
       });
     } catch (error) {
       console.error('Error starting magnetometer:', error);
@@ -126,7 +132,7 @@ export default function QiblaCompassScreen() {
         return;
       }
       
-      setLocationStatus('Getting your location...');
+      setLocationStatus('Pinpointing your position...');
       const location = await getCurrentLocation();
       
       if (location) {
@@ -136,7 +142,7 @@ export default function QiblaCompassScreen() {
         });
         setLocationStatus('Location found');
       } else {
-        setLocationStatus('Failed to get location');
+        setLocationStatus('Failed to retrieve precision coordinates');
       }
     } catch (error) {
       console.error('Error getting location:', error);
@@ -160,7 +166,7 @@ export default function QiblaCompassScreen() {
   };
 
   const calculateDistance = (userCoords: LocationCoords, kaabaCoords: LocationCoords): number => {
-    const R = 6371; // Radius of earth in km
+    const R = 6371; // Earth's mean radius
     const lat1 = (userCoords.latitude * Math.PI) / 180;
     const lat2 = (kaabaCoords.latitude * Math.PI) / 180;
     const deltaLat = ((kaabaCoords.latitude - userCoords.latitude) * Math.PI) / 180;
@@ -190,6 +196,12 @@ export default function QiblaCompassScreen() {
     return directions[index];
   };
 
+  // Interpolation logic for mapping numerical degrees smoothly to degree strings
+  const interpolatedDialRotation = compassRotationAnim.interpolate({
+    inputRange: [-360, 360],
+    outputRange: ['-360deg', '360deg'],
+  });
+
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen 
@@ -207,8 +219,8 @@ export default function QiblaCompassScreen() {
         bounces={true}
       >
         <View style={styles.header}>
-          <Compass size={48} color="#1B5E20" />
-          <Text style={styles.title}>🕋 Qibla Direction Calculator</Text>
+          <Compass size={44} color="#1B5E20" />
+          <Text style={styles.title}>Qibla Finder</Text>
           <Text style={styles.subtitle}>{locationStatus}</Text>
         </View>
 
@@ -218,23 +230,23 @@ export default function QiblaCompassScreen() {
               <View style={styles.qiblaIconContainer}>
                 <Text style={styles.kaabaEmoji}>🕋</Text>
               </View>
-              <Text style={styles.qiblaDirectionText}>Qibla Direction</Text>
+              <Text style={styles.qiblaDirectionText}>Target Angle</Text>
               <Text style={styles.qiblaAngle}>{Math.round(qiblaDirection)}°</Text>
               <Text style={styles.directionName}>{getDirectionName(qiblaDirection)}</Text>
             </View>
 
             <View style={styles.infoGrid}>
               <View style={styles.infoCard}>
-                <Navigation size={24} color="#4CAF50" />
-                <Text style={styles.infoLabel}>Distance to Kaaba</Text>
-                <Text style={styles.infoValue}>{Math.round(distance)} km</Text>
+                <Navigation size={22} color="#4CAF50" />
+                <Text style={styles.infoLabel}>Distance to Mecca</Text>
+                <Text style={styles.infoValue}>{Math.round(distance).toLocaleString()} km</Text>
               </View>
               
               <View style={styles.infoCard}>
-                <MapPin size={24} color="#2196F3" />
-                <Text style={styles.infoLabel}>Your Location</Text>
+                <MapPin size={22} color="#2196F3" />
+                <Text style={styles.infoLabel}>Current Geolocation</Text>
                 <Text style={styles.infoValue}>
-                  {userLocation.latitude.toFixed(2)}°, {userLocation.longitude.toFixed(2)}°
+                  {userLocation.latitude.toFixed(3)}°, {userLocation.longitude.toFixed(3)}°
                 </Text>
               </View>
             </View>
@@ -244,7 +256,8 @@ export default function QiblaCompassScreen() {
                 <View style={styles.compassRim}>
                   <View style={styles.compassOuterRing} />
                   
-                  <View style={styles.compassFace}>
+                  {/* The actual rotating element matching phone rotation */}
+                  <Animated.View style={[styles.compassFace, { transform: [{ rotate: interpolatedDialRotation }] }]}>
                     <View style={styles.cardinalContainer}>
                       <Text style={[styles.cardinalDirection3D, styles.directionNorth]}>N</Text>
                       <Text style={[styles.cardinalDirection3D, styles.directionEast]}>E</Text>
@@ -270,21 +283,8 @@ export default function QiblaCompassScreen() {
                       </View>
                     ))}
                     
-                    {/* The pointer and the Kaaba symbol grouped inside the animated container */}
-                    <Animated.View 
-                      style={[
-                        styles.qiblaArrow3D,
-                        { 
-                          transform: [{ 
-                            rotate: rotationAnim.interpolate({
-                              inputRange: [0, 360],
-                              outputRange: ['0deg', '360deg']
-                            }) 
-                          }] 
-                        }
-                      ]}
-                    >
-                      <View style={styles.arrowShadow} />
+                    {/* Qibla arrow indicator anchored firmly inside the dynamic layout context */}
+                    <View style={[styles.qiblaArrowContainer, { transform: [{ rotate: `${qiblaDirection}deg` }] }]}>
                       <View style={styles.arrowLine3D} />
                       <View style={styles.arrowHead3D} />
                       
@@ -293,20 +293,22 @@ export default function QiblaCompassScreen() {
                           <Text style={styles.kaabaText}>🕋</Text>
                         </View>
                       </Animated.View>
-                    </Animated.View>
-                    
-                    <View style={styles.centerDot3D}>
-                      <View style={styles.centerDotInner} />
                     </View>
-                    
-                    <View style={styles.compassGlass} />
+                  </Animated.View>
+
+                  {/* Core structural pivot point (Static Overlay) */}
+                  <View style={styles.centerDot3D}>
+                    <View style={styles.centerDotInner} />
                   </View>
+
+                  {/* Glare/Glass overlay effect (Static Overlay) */}
+                  <View style={styles.compassGlass} pointerEvents="none" />
                 </View>
               </View>
               
               <View style={styles.compassLabels}>
-                <Text style={styles.compassTitle}>Qibla Compass</Text>
-                <Text style={styles.compassSubtitle}>Point top of phone towards Mecca</Text>
+                <Text style={styles.compassTitle}>Dynamic Compass Alignment</Text>
+                <Text style={styles.compassSubtitle}>Rotate your phone until the 🕋 icon touches North (N)</Text>
               </View>
             </View>
 
@@ -318,7 +320,7 @@ export default function QiblaCompassScreen() {
             >
               <MapPin size={20} color="#FFFFFF" />
               <Text style={styles.buttonText}>
-                {isLoading ? 'Getting Location...' : 'Refresh Location'}
+                {isLoading ? 'Calibrating Position...' : 'Recalibrate GPS'}
               </Text>
             </TouchableOpacity>
           </>
@@ -333,28 +335,17 @@ export default function QiblaCompassScreen() {
                 activeOpacity={0.7}
               >
                 <MapPin size={20} color="#FFFFFF" />
-                <Text style={styles.buttonText}>Get My Location</Text>
+                <Text style={styles.buttonText}>Initialize Location Services</Text>
               </TouchableOpacity>
             )}
           </View>
         )}
 
         <View style={styles.instructions}>
-          <Text style={styles.instructionTitle}>How to use:</Text>
-          <Text style={styles.instructionText}>• Allow location access when prompted</Text>
-          <Text style={styles.instructionText}>• Turn around until the green line points directly North (N)</Text>
-          <Text style={styles.instructionText}>• Keep phone flat for best accuracy</Text>
-          {userLocation && (
-            <Text style={styles.instructionText}>
-              • The Kaaba is {Math.round(distance)} km away from you
-            </Text>
-          )}
-        </View>
-
-        <View style={styles.additionalInfo}>
-          <Text style={styles.infoTitle}>📍 Kaaba Coordinates</Text>
-          <Text style={styles.infoText}>Latitude: 21.4225° N, Longitude: 39.8262° E</Text>
-          <Text style={styles.infoText}>Mecca, Saudi Arabia</Text>
+          <Text style={styles.instructionTitle}>Usage Parameters:</Text>
+          <Text style={styles.instructionText}>• Lay the device flat on an even, horizontal surface.</Text>
+          <Text style={styles.instructionText}>• Keep away from high magnetic interference (speakers, laptops, metal cases).</Text>
+          <Text style={styles.instructionText}>• Turn the body until the green pointer matches up straight ahead.</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -362,115 +353,116 @@ export default function QiblaCompassScreen() {
 }
 
 const { width: screenWidth } = Dimensions.get('window');
-const COMPASS_DIAL_SIZE = Math.min(screenWidth - 60, 320);
+const COMPASS_DIAL_SIZE = Math.min(screenWidth - 60, 330);
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F8F9FA',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 30,
+    paddingBottom: 40,
   },
   header: {
     alignItems: 'center',
-    padding: 20,
+    paddingVertical: 24,
     backgroundColor: '#FFFFFF',
-    marginBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    borderBottomColor: '#EAEAEA',
   },
   title: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#1B5E20',
-    marginTop: 10,
-    textAlign: 'center',
+    marginTop: 6,
   },
   subtitle: {
     fontSize: 14,
-    color: '#666666',
-    marginTop: 5,
+    color: '#757575',
+    marginTop: 4,
   },
   directionCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 30,
+    borderRadius: 20,
+    padding: 24,
     alignItems: 'center',
     marginHorizontal: 20,
-    marginBottom: 20,
+    marginTop: 20,
+    marginBottom: 16,
     ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
-      android: { elevation: 6 },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12 },
+      android: { elevation: 4 },
     }),
   },
   qiblaIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#E8F5E8',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#E8F5E9',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 12,
   },
   kaabaEmoji: {
-    fontSize: 40,
+    fontSize: 36,
   },
   qiblaDirectionText: {
-    fontSize: 18,
-    color: '#666666',
-    marginBottom: 5,
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#888888',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   qiblaAngle: {
-    fontSize: 48,
-    fontWeight: 'bold',
+    fontSize: 54,
+    fontWeight: '800',
     color: '#1B5E20',
-    marginBottom: 5,
+    marginVertical: 2,
   },
   directionName: {
     fontSize: 16,
-    color: '#4CAF50',
+    color: '#2E7D32',
     fontWeight: '600',
   },
   infoGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginHorizontal: 20,
-    marginBottom: 20,
+    marginBottom: 10,
   },
   infoCard: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 15,
+    borderRadius: 16,
+    padding: 16,
     alignItems: 'center',
-    marginHorizontal: 5,
+    marginHorizontal: 6,
     ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4 },
-      android: { elevation: 3 },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6 },
+      android: { elevation: 2 },
     }),
   },
   infoLabel: {
-    fontSize: 12,
-    color: '#999999',
-    marginTop: 8,
-    marginBottom: 4,
+    fontSize: 11,
+    color: '#9E9E9E',
+    marginTop: 6,
+    fontWeight: '500',
     textAlign: 'center',
   },
   infoValue: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#333333',
+    marginTop: 2,
     textAlign: 'center',
   },
   compassContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 30,
-    marginHorizontal: 20,
+    paddingVertical: 24,
   },
   compass3DBase: {
     width: COMPASS_DIAL_SIZE,
@@ -478,16 +470,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16 },
-      android: { elevation: 12 },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20 },
+      android: { elevation: 10 },
     }),
   },
   compassRim: {
     width: '100%',
     height: '100%',
     borderRadius: COMPASS_DIAL_SIZE / 2,
-    backgroundColor: '#2C3E50',
-    padding: 8,
+    backgroundColor: '#263238',
+    padding: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -496,19 +488,16 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: COMPASS_DIAL_SIZE / 2,
-    borderWidth: 4,
-    borderColor: '#34495E',
+    borderWidth: 2,
+    borderColor: '#37474F',
   },
   compassFace: {
-    width: '90%',
-    height: '90%',
-    borderRadius: (COMPASS_DIAL_SIZE * 0.9) / 2,
+    width: '100%',
+    height: '100%',
+    borderRadius: COMPASS_DIAL_SIZE / 2,
     backgroundColor: '#FFFFFF',
-    position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#BDC3C7',
   },
   cardinalContainer: {
     position: 'absolute',
@@ -517,126 +506,109 @@ const styles = StyleSheet.create({
   },
   cardinalDirection3D: {
     position: 'absolute',
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#2C3E50',
-    textShadowColor: '#BDC3C7',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
+    color: '#37474F',
   },
-  directionNorth: { top: 15, left: '50%', marginLeft: -10, color: '#E74C3C' },
-  directionEast: { right: 15, top: '50%', marginTop: -12 },
-  directionSouth: { bottom: 15, left: '50%', marginLeft: -10 },
-  directionWest: { left: 15, top: '50%', marginTop: -12 },
-  qiblaArrow3D: {
+  directionNorth: { top: 22, left: '50%', marginLeft: -7, color: '#D32F2F' },
+  directionEast: { right: 22, top: '50%', marginTop: -11 },
+  directionSouth: { bottom: 22, left: '50%', marginLeft: -6 },
+  directionWest: { left: 22, top: '50%', marginTop: -11 },
+  qiblaArrowContainer: {
     position: 'absolute',
     width: '100%',
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 5,
-  },
-  arrowShadow: {
-    position: 'absolute',
-    width: 6,
-    height: COMPASS_DIAL_SIZE / 3.5,
-    backgroundColor: 'rgba(0,0,0,0.15)',
-    borderRadius: 3,
-    transform: [{ translateX: 2 }, { translateY: -22 }],
   },
   arrowLine3D: {
-    width: 6,
-    height: COMPASS_DIAL_SIZE / 3.5,
-    backgroundColor: '#27AE60',
-    borderRadius: 3,
-    borderWidth: 1,
-    borderColor: '#229954',
-    transform: [{ translateY: -25 }],
+    width: 4,
+    height: COMPASS_DIAL_SIZE / 2.6,
+    backgroundColor: '#2E7D32',
+    borderRadius: 2,
+    // Shifts line up so it points from center outwards
+    transform: [{ translateY: -COMPASS_DIAL_SIZE / 6.5 }], 
   },
   arrowHead3D: {
     width: 0,
     height: 0,
-    borderLeftWidth: 12,
-    borderRightWidth: 12,
-    borderBottomWidth: 24,
+    borderLeftWidth: 10,
+    borderRightWidth: 10,
+    borderBottomWidth: 20,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderBottomColor: '#27AE60',
+    borderBottomColor: '#2E7D32',
     position: 'absolute',
-    top: '12%',
+    top: '10%',
   },
   kaabaIndicator: {
     position: 'absolute',
-    top: '2%',
+    top: '-3%',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 8,
   },
   kaabaSymbol: {
-    width: 36,
-    height: 36,
-    backgroundColor: '#2C3E50',
+    width: 32,
+    height: 32,
+    backgroundColor: '#111111',
     borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#1A252F',
+    borderWidth: 1.5,
+    borderColor: '#FFD700',
   },
   kaabaText: {
-    fontSize: 18,
+    fontSize: 16,
   },
   centerDot3D: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#34495E',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#37474F',
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#2C3E50',
-    zIndex: 10,
+    zIndex: 15,
   },
   centerDotInner: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#E74C3C',
+    backgroundColor: '#D32F2F',
   },
   degreeMarker3D: {
     position: 'absolute',
     width: 2,
-    height: COMPASS_DIAL_SIZE / 2.2,
+    height: COMPASS_DIAL_SIZE,
     alignItems: 'center',
   },
-  majorTick: { width: 3, height: 16, backgroundColor: '#2C3E50', borderRadius: 1.5 },
-  mediumTick: { width: 2, height: 10, backgroundColor: '#34495E', borderRadius: 1 },
-  minorTick: { width: 1, height: 6, backgroundColor: '#7F8C8D', borderRadius: 0.5 },
+  majorTick: { width: 2, height: 12, backgroundColor: '#37474F' },
+  mediumTick: { width: 1.5, height: 8, backgroundColor: '#78909C' },
+  minorTick: { width: 1, height: 5, backgroundColor: '#B0BEC5' },
   degreeText: {
-    fontSize: 9,
-    color: '#2C3E50',
+    fontSize: 8,
+    color: '#546E7A',
     fontWeight: '600',
-    marginTop: 2,
-    textAlign: 'center',
+    marginTop: 14,
   },
   loadingContainer: {
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 100,
+    paddingVertical: 80,
   },
   loadingText: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#666666',
-    marginTop: 20,
-    marginBottom: 30,
+    marginTop: 16,
+    marginBottom: 24,
   },
   getLocationButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1B5E20',
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 25,
+    borderRadius: 24,
   },
   refreshButton: {
     flexDirection: 'row',
@@ -645,79 +617,68 @@ const styles = StyleSheet.create({
     backgroundColor: '#1B5E20',
     paddingHorizontal: 24,
     paddingVertical: 14,
-    borderRadius: 25,
+    borderRadius: 24,
     marginHorizontal: 20,
-    marginVertical: 20,
+    marginTop: 10,
     ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
-      android: { elevation: 4 },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+      android: { elevation: 2 },
     }),
   },
   buttonText: {
     color: '#FFFFFF',
     fontWeight: '600',
     marginLeft: 8,
+    fontSize: 15,
   },
   instructions: {
     backgroundColor: '#FFFFFF',
     marginHorizontal: 20,
-    marginTop: 10,
-    padding: 20,
-    borderRadius: 12,
+    marginTop: 20,
+    padding: 18,
+    borderRadius: 16,
     borderLeftWidth: 4,
     borderLeftColor: '#4CAF50',
-  },
-  additionalInfo: {
-    backgroundColor: '#E8F5E9',
-    marginHorizontal: 20,
-    marginTop: 20,
-    padding: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  infoTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1B5E20',
-    marginBottom: 10,
-  },
-  infoText: {
-    fontSize: 14,
-    color: '#2E7D32',
-    marginBottom: 5,
-    textAlign: 'center',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.02, shadowRadius: 6 },
+      android: { elevation: 1 },
+    }),
   },
   instructionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#333333',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   instructionText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666666',
-    marginBottom: 5,
+    lineHeight: 18,
+    marginBottom: 4,
   },
   compassGlass: {
     position: 'absolute',
-    width: '100%',
-    height: '100%',
-    borderRadius: (COMPASS_DIAL_SIZE * 0.9) / 2,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    width: '96%',
+    height: '96%',
+    borderRadius: COMPASS_DIAL_SIZE / 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    zIndex: 20,
   },
   compassLabels: {
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 16,
+    paddingHorizontal: 32,
   },
   compassTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-    marginBottom: 4,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#263238',
+    marginBottom: 2,
   },
   compassSubtitle: {
-    fontSize: 14,
-    color: '#7F8C8D',
-    fontStyle: 'italic',
+    fontSize: 13,
+    color: '#78909C',
+    textAlign: 'center',
+    lineHeight: 16,
   },
 });
