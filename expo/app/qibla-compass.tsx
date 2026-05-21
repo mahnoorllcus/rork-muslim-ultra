@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import { useLocation } from '@/providers/LocationProvider';
-import { MapPin, Compass, Navigation } from 'lucide-react-native';
+import { MapPin, Compass, Navigation, CheckCircle2 } from 'lucide-react-native';
 import { Magnetometer } from 'expo-sensors';
 
 const KAABA_COORDS = { latitude: 21.4225, longitude: 39.8262 };
@@ -22,97 +22,63 @@ interface LocationCoords {
   longitude: number;
 }
 
-export default function QiblaCompassScreen() {
+export default function MuslimProQiblaScreen() {
   const [userLocation, setUserLocation] = useState<LocationCoords | null>(null);
   const [qiblaDirection, setQiblaDirection] = useState<number>(0);
-  const [locationStatus, setLocationStatus] = useState<string>('Getting location...');
+  const [locationStatus, setLocationStatus] = useState<string>('Calibrating location...');
   const [distance, setDistance] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [deviceHeading, setDeviceHeading] = useState<number>(0);
   
-  // High-performance animated variables using native drivers
-  const compassRotationAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  // Physics-based spring animations for fluid hardware mapping
+  const dialRotationAnim = useRef(new Animated.Value(0)).current;
   const magnetometerSubscription = useRef<any>(null);
 
-  const { 
-    requestLocationPermission: requestPermission, 
-    getCurrentLocation,
-  } = useLocation();
+  const { requestLocationPermission: requestPermission, getCurrentLocation } = useLocation();
 
   useEffect(() => {
     requestLocationPermission();
     startMagnetometer();
-    
-    return () => {
-      stopMagnetometer();
-    };
+    return () => stopMagnetometer();
   }, []);
 
   useEffect(() => {
     if (userLocation) {
       const qibla = calculateQiblaDirection(userLocation, KAABA_COORDS);
       setQiblaDirection(qibla);
-      const dist = calculateDistance(userLocation, KAABA_COORDS);
-      setDistance(dist);
+      setDistance(calculateDistance(userLocation, KAABA_COORDS));
     }
   }, [userLocation]);
 
   useEffect(() => {
-    // To orient a virtual dial with real-world sensors, 
-    // the dial graphic must rotate in the exact opposite direction (-deviceHeading)
-    const targetDialRotation = -deviceHeading;
+    // Muslim Pro Mechanic: The Dial rotates relative to the calculated Qibla path offset
+    const targetDialRotation = qiblaDirection - deviceHeading;
     
-    Animated.spring(compassRotationAnim, {
+    Animated.spring(dialRotationAnim, {
       toValue: targetDialRotation,
       useNativeDriver: true,
-      friction: 9,
-      tension: 45,
+      friction: 8,
+      tension: 35,
     }).start();
-  }, [deviceHeading]);
-
-  useEffect(() => {
-    const pulseAnimation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.12,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    pulseAnimation.start();
-    
-    return () => pulseAnimation.stop();
-  }, []);
+  }, [deviceHeading, qiblaDirection]);
 
   const startMagnetometer = async () => {
     try {
       const isAvailable = await Magnetometer.isAvailableAsync();
       if (!isAvailable) {
-        setLocationStatus('Compass sensor unavailable');
+        setLocationStatus('Sensor array unavailable');
         return;
       }
-
-      Magnetometer.setUpdateInterval(80); // Sweeter, lower interval for fluid 60fps tracking
+      Magnetometer.setUpdateInterval(60); // Ultra-low update interval for responsive 60fps tracking
       magnetometerSubscription.current = Magnetometer.addListener((data) => {
         const { x, y } = data;
-        
-        // Calculate heading in radians, convert to degrees, then normalize north reference
         let heading = Math.atan2(y, x) * (180 / Math.PI);
         heading = heading < 0 ? heading + 360 : heading;
-        
-        // Compensate for hardware layout differences across platform kernels
         const adjustedHeading = Platform.OS === 'ios' ? heading : (heading + 90) % 360;
         setDeviceHeading(adjustedHeading);
       });
     } catch (error) {
-      console.error('Error starting magnetometer:', error);
+      console.error(error);
     }
   };
 
@@ -128,25 +94,16 @@ export default function QiblaCompassScreen() {
       setIsLoading(true);
       const granted = await requestPermission();
       if (!granted) {
-        setLocationStatus('Location permission denied');
+        setLocationStatus('GPS Access Denied');
         return;
       }
-      
-      setLocationStatus('Pinpointing your position...');
       const location = await getCurrentLocation();
-      
       if (location) {
-        setUserLocation({
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-        });
-        setLocationStatus('Location found');
-      } else {
-        setLocationStatus('Failed to retrieve precision coordinates');
+        setUserLocation({ latitude: location.coords.latitude, longitude: location.coords.longitude });
+        setLocationStatus('GPS Lock Established');
       }
     } catch (error) {
-      console.error('Error getting location:', error);
-      setLocationStatus('Failed to get location');
+      setLocationStatus('GPS Resolution Failed');
     } finally {
       setIsLoading(false);
     }
@@ -156,529 +113,143 @@ export default function QiblaCompassScreen() {
     const lat1 = (userCoords.latitude * Math.PI) / 180;
     const lat2 = (kaabaCoords.latitude * Math.PI) / 180;
     const deltaLng = ((kaabaCoords.longitude - userCoords.longitude) * Math.PI) / 180;
-
     const x = Math.sin(deltaLng) * Math.cos(lat2);
     const y = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
-
-    let bearing = Math.atan2(x, y);
-    bearing = (bearing * 180) / Math.PI;
-    return (bearing + 360) % 360;
+    return (Math.atan2(x, y) * 180 / Math.PI + 360) % 360;
   };
 
   const calculateDistance = (userCoords: LocationCoords, kaabaCoords: LocationCoords): number => {
-    const R = 6371; // Earth's mean radius
+    const R = 6371;
     const lat1 = (userCoords.latitude * Math.PI) / 180;
     const lat2 = (kaabaCoords.latitude * Math.PI) / 180;
-    const deltaLat = ((kaabaCoords.latitude - userCoords.latitude) * Math.PI) / 180;
-    const deltaLng = ((kaabaCoords.longitude - userCoords.longitude) * Math.PI) / 180;
-
-    const a =
-      Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
-      Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+    const dLat = ((kaabaCoords.latitude - userCoords.latitude) * Math.PI) / 180;
+    const dLng = ((kaabaCoords.longitude - userCoords.longitude) * Math.PI) / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
   };
 
-  const refreshLocation = () => {
-    setUserLocation(null);
-    setLocationStatus('Getting location...');
-    requestLocationPermission();
-  };
-
-  const getDirectionName = (degrees: number): string => {
-    const directions = [
-      'North', 'North-Northeast', 'Northeast', 'East-Northeast',
-      'East', 'East-Southeast', 'Southeast', 'South-Southeast',
-      'South', 'South-Southwest', 'Southwest', 'West-Southwest',
-      'West', 'West-Northwest', 'Northwest', 'North-Northwest'
-    ];
-    const index = Math.round(degrees / 22.5) % 16;
-    return directions[index];
-  };
-
-  // Interpolation logic for mapping numerical degrees smoothly to degree strings
-  const interpolatedDialRotation = compassRotationAnim.interpolate({
-    inputRange: [-360, 360],
-    outputRange: ['-360deg', '360deg'],
-  });
+  // Determine alignment within a strict 3-degree allowance window
+  const isAligned = Math.abs((qiblaDirection - deviceHeading + 360) % 360) < 3 || Math.abs((qiblaDirection - deviceHeading + 360) % 360) > 357;
 
   return (
     <SafeAreaView style={styles.container}>
-      <Stack.Screen 
-        options={{ 
-          title: 'Qibla Direction',
-          headerStyle: { backgroundColor: '#1B5E20' },
-          headerTintColor: '#FFFFFF',
-        }} 
-      />
-      
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        bounces={true}
-      >
-        <View style={styles.header}>
-          <Compass size={44} color="#1B5E20" />
-          <Text style={styles.title}>Qibla Finder</Text>
-          <Text style={styles.subtitle}>{locationStatus}</Text>
+      <Stack.Screen options={{ title: 'Qibla', headerStyle: { backgroundColor: '#0C3A1A' }, headerTintColor: '#FFFFFF' }} />
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        
+        {/* Top Feedback Banner */}
+        <View style={[styles.statusBanner, isAligned && styles.statusBannerAligned]}>
+          {isAligned ? (
+            <View style={styles.rowCenter}>
+              <CheckCircle2 size={20} color="#FFFFFF" />
+              <Text style={styles.statusBannerTextAligned}>You are facing Mecca</Text>
+            </View>
+          ) : (
+            <Text style={styles.statusBannerText}>Rotate phone to align with the target marker</Text>
+          )}
         </View>
 
-        {userLocation ? (
-          <>
-            <View style={styles.directionCard}>
-              <View style={styles.qiblaIconContainer}>
-                <Text style={styles.kaabaEmoji}>🕋</Text>
+        {userLocation && (
+          <View style={styles.compassWrapperZone}>
+            
+            {/* Target Beacon - Fixed Top Target Element */}
+            <View style={styles.topTargetBeacon}>
+              <View style={[styles.kaabaTargetNode, isAligned && styles.kaabaTargetNodeActive]}>
+                <Text style={styles.kaabaMarkerIcon}>🕋</Text>
               </View>
-              <Text style={styles.qiblaDirectionText}>Target Angle</Text>
-              <Text style={styles.qiblaAngle}>{Math.round(qiblaDirection)}°</Text>
-              <Text style={styles.directionName}>{getDirectionName(qiblaDirection)}</Text>
+              <View style={[styles.targetIndicatorLine, isAligned && styles.targetIndicatorLineActive]} />
             </View>
 
-            <View style={styles.infoGrid}>
-              <View style={styles.infoCard}>
-                <Navigation size={22} color="#4CAF50" />
-                <Text style={styles.infoLabel}>Distance to Mecca</Text>
-                <Text style={styles.infoValue}>{Math.round(distance).toLocaleString()} km</Text>
-              </View>
-              
-              <View style={styles.infoCard}>
-                <MapPin size={22} color="#2196F3" />
-                <Text style={styles.infoLabel}>Current Geolocation</Text>
-                <Text style={styles.infoValue}>
-                  {userLocation.latitude.toFixed(3)}°, {userLocation.longitude.toFixed(3)}°
-                </Text>
-              </View>
-            </View>
+            {/* Main Compass Housing */}
+            <View style={[styles.compassHousingFrame, isAligned && styles.compassHousingFrameAligned]}>
+              <Animated.View style={[styles.rotatableDial, {
+                transform: [{
+                  rotate: dialRotationAnim.interpolate({
+                    inputRange: [-360, 360],
+                    outputRange: ['-360deg', '360deg']
+                  })
+                }]
+              }]}>
+                
+                {/* Cardinal Points */}
+                <Text style={[styles.cardinalPoint, styles.pointN]}>N</Text>
+                <Text style={[styles.cardinalPoint, styles.pointE]}>E</Text>
+                <Text style={[styles.cardinalPoint, styles.pointS]}>S</Text>
+                <Text style={[styles.cardinalPoint, styles.pointW]}>W</Text>
 
-            <View style={styles.compassContainer}>
-              <View style={styles.compass3DBase}>
-                <View style={styles.compassRim}>
-                  <View style={styles.compassOuterRing} />
-                  
-                  {/* The actual rotating element matching phone rotation */}
-                  <Animated.View style={[styles.compassFace, { transform: [{ rotate: interpolatedDialRotation }] }]}>
-                    <View style={styles.cardinalContainer}>
-                      <Text style={[styles.cardinalDirection3D, styles.directionNorth]}>N</Text>
-                      <Text style={[styles.cardinalDirection3D, styles.directionEast]}>E</Text>
-                      <Text style={[styles.cardinalDirection3D, styles.directionSouth]}>S</Text>
-                      <Text style={[styles.cardinalDirection3D, styles.directionWest]}>W</Text>
-                    </View>
-                    
-                    {Array.from({ length: 36 }, (_, i) => i * 10).map((degree) => (
-                      <View
-                        key={degree}
-                        style={[
-                          styles.degreeMarker3D,
-                          { transform: [{ rotate: `${degree}deg` }] }
-                        ]}
-                      >
-                        <View style={[
-                          degree % 90 === 0 ? styles.majorTick : 
-                          degree % 30 === 0 ? styles.mediumTick : styles.minorTick
-                        ]} />
-                        {degree % 30 === 0 && degree % 90 !== 0 && (
-                          <Text style={styles.degreeText}>{degree}°</Text>
-                        )}
-                      </View>
-                    ))}
-                    
-                    {/* Qibla arrow indicator anchored firmly inside the dynamic layout context */}
-                    <View style={[styles.qiblaArrowContainer, { transform: [{ rotate: `${qiblaDirection}deg` }] }]}>
-                      <View style={styles.arrowLine3D} />
-                      <View style={styles.arrowHead3D} />
-                      
-                      <Animated.View style={[styles.kaabaIndicator, { transform: [{ scale: pulseAnim }] }]}>
-                        <View style={styles.kaabaSymbol}>
-                          <Text style={styles.kaabaText}>🕋</Text>
-                        </View>
-                      </Animated.View>
-                    </View>
-                  </Animated.View>
-
-                  {/* Core structural pivot point (Static Overlay) */}
-                  <View style={styles.centerDot3D}>
-                    <View style={styles.centerDotInner} />
+                {/* Ring Scale Increments */}
+                {Array.from({ length: 24 }, (_, i) => i * 15).map((degree) => (
+                  <View key={degree} style={[styles.scaleNode, { transform: [{ rotate: `${degree}deg` }] }]}>
+                    <View style={degree % 90 === 0 ? styles.scaleTickMajor : styles.scaleTickMinor} />
                   </View>
+                ))}
 
-                  {/* Glare/Glass overlay effect (Static Overlay) */}
-                  <View style={styles.compassGlass} pointerEvents="none" />
-                </View>
-              </View>
+                {/* Central Guidance Arrow Pointer */}
+                <View style={[styles.centerNeedleStem, isAligned && styles.centerNeedleStemActive]} />
+              </Animated.View>
               
-              <View style={styles.compassLabels}>
-                <Text style={styles.compassTitle}>Dynamic Compass Alignment</Text>
-                <Text style={styles.compassSubtitle}>Rotate your phone until the 🕋 icon touches North (N)</Text>
-              </View>
+              <View style={styles.centralCapPivot} />
             </View>
-
-            <TouchableOpacity
-              style={styles.refreshButton}
-              onPress={refreshLocation}
-              activeOpacity={0.7}
-              disabled={isLoading}
-            >
-              <MapPin size={20} color="#FFFFFF" />
-              <Text style={styles.buttonText}>
-                {isLoading ? 'Calibrating Position...' : 'Recalibrate GPS'}
-              </Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <View style={styles.loadingContainer}>
-            <Compass size={64} color="#1B5E20" />
-            <Text style={styles.loadingText}>{locationStatus}</Text>
-            {!isLoading && (
-              <TouchableOpacity
-                style={styles.getLocationButton}
-                onPress={refreshLocation}
-                activeOpacity={0.7}
-              >
-                <MapPin size={20} color="#FFFFFF" />
-                <Text style={styles.buttonText}>Initialize Location Services</Text>
-              </TouchableOpacity>
-            )}
           </View>
         )}
 
-        <View style={styles.instructions}>
-          <Text style={styles.instructionTitle}>Usage Parameters:</Text>
-          <Text style={styles.instructionText}>• Lay the device flat on an even, horizontal surface.</Text>
-          <Text style={styles.instructionText}>• Keep away from high magnetic interference (speakers, laptops, metal cases).</Text>
-          <Text style={styles.instructionText}>• Turn the body until the green pointer matches up straight ahead.</Text>
+        {/* Global Data Cards */}
+        <View style={styles.metricsContainer}>
+          <View style={styles.metricItemCard}>
+            <Navigation size={18} color="#0C3A1A" />
+            <Text style={styles.metricLabel}>Mecca Bearing</Text>
+            <Text style={styles.metricValue}>{Math.round(qiblaDirection)}° N</Text>
+          </View>
+          <View style={styles.metricItemCard}>
+            <MapPin size={18} color="#0C3A1A" />
+            <Text style={styles.metricLabel}>Distance</Text>
+            <Text style={styles.metricValue}>{Math.round(distance).toLocaleString()} km</Text>
+          </View>
         </View>
+
+        <TouchableOpacity style={styles.calibrationButton} onPress={refreshLocation} disabled={isLoading}>
+          <Text style={styles.buttonLabelText}>{isLoading ? 'Resetting Array...' : 'Recalibrate Compass'}</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const { width: screenWidth } = Dimensions.get('window');
-const COMPASS_DIAL_SIZE = Math.min(screenWidth - 60, 330);
+const { width } = Dimensions.get('window');
+const CORE_DIAL_DIMENSION = Math.min(width - 80, 310);
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8F9FA',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 40,
-  },
-  header: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#EAEAEA',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1B5E20',
-    marginTop: 6,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#757575',
-    marginTop: 4,
-  },
-  directionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    marginHorizontal: 20,
-    marginTop: 20,
-    marginBottom: 16,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12 },
-      android: { elevation: 4 },
-    }),
-  },
-  qiblaIconContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#E8F5E9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  kaabaEmoji: {
-    fontSize: 36,
-  },
-  qiblaDirectionText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#888888',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  qiblaAngle: {
-    fontSize: 54,
-    fontWeight: '800',
-    color: '#1B5E20',
-    marginVertical: 2,
-  },
-  directionName: {
-    fontSize: 16,
-    color: '#2E7D32',
-    fontWeight: '600',
-  },
-  infoGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginHorizontal: 20,
-    marginBottom: 10,
-  },
-  infoCard: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    alignItems: 'center',
-    marginHorizontal: 6,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6 },
-      android: { elevation: 2 },
-    }),
-  },
-  infoLabel: {
-    fontSize: 11,
-    color: '#9E9E9E',
-    marginTop: 6,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  infoValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#333333',
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  compassContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 24,
-  },
-  compass3DBase: {
-    width: COMPASS_DIAL_SIZE,
-    height: COMPASS_DIAL_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20 },
-      android: { elevation: 10 },
-    }),
-  },
-  compassRim: {
-    width: '100%',
-    height: '100%',
-    borderRadius: COMPASS_DIAL_SIZE / 2,
-    backgroundColor: '#263238',
-    padding: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  compassOuterRing: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    borderRadius: COMPASS_DIAL_SIZE / 2,
-    borderWidth: 2,
-    borderColor: '#37474F',
-  },
-  compassFace: {
-    width: '100%',
-    height: '100%',
-    borderRadius: COMPASS_DIAL_SIZE / 2,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cardinalContainer: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-  },
-  cardinalDirection3D: {
-    position: 'absolute',
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#37474F',
-  },
-  directionNorth: { top: 22, left: '50%', marginLeft: -7, color: '#D32F2F' },
-  directionEast: { right: 22, top: '50%', marginTop: -11 },
-  directionSouth: { bottom: 22, left: '50%', marginLeft: -6 },
-  directionWest: { left: 22, top: '50%', marginTop: -11 },
-  qiblaArrowContainer: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  arrowLine3D: {
-    width: 4,
-    height: COMPASS_DIAL_SIZE / 2.6,
-    backgroundColor: '#2E7D32',
-    borderRadius: 2,
-    // Shifts line up so it points from center outwards
-    transform: [{ translateY: -COMPASS_DIAL_SIZE / 6.5 }], 
-  },
-  arrowHead3D: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 10,
-    borderRightWidth: 10,
-    borderBottomWidth: 20,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderBottomColor: '#2E7D32',
-    position: 'absolute',
-    top: '10%',
-  },
-  kaabaIndicator: {
-    position: 'absolute',
-    top: '-3%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  kaabaSymbol: {
-    width: 32,
-    height: 32,
-    backgroundColor: '#111111',
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: '#FFD700',
-  },
-  kaabaText: {
-    fontSize: 16,
-  },
-  centerDot3D: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#37474F',
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 15,
-  },
-  centerDotInner: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#D32F2F',
-  },
-  degreeMarker3D: {
-    position: 'absolute',
-    width: 2,
-    height: COMPASS_DIAL_SIZE,
-    alignItems: 'center',
-  },
-  majorTick: { width: 2, height: 12, backgroundColor: '#37474F' },
-  mediumTick: { width: 1.5, height: 8, backgroundColor: '#78909C' },
-  minorTick: { width: 1, height: 5, backgroundColor: '#B0BEC5' },
-  degreeText: {
-    fontSize: 8,
-    color: '#546E7A',
-    fontWeight: '600',
-    marginTop: 14,
-  },
-  loadingContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 80,
-  },
-  loadingText: {
-    fontSize: 15,
-    color: '#666666',
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  getLocationButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1B5E20',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 24,
-  },
-  refreshButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1B5E20',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 24,
-    marginHorizontal: 20,
-    marginTop: 10,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
-      android: { elevation: 2 },
-    }),
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    marginLeft: 8,
-    fontSize: 15,
-  },
-  instructions: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 20,
-    marginTop: 20,
-    padding: 18,
-    borderRadius: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#4CAF50',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.02, shadowRadius: 6 },
-      android: { elevation: 1 },
-    }),
-  },
-  instructionTitle: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#333333',
-    marginBottom: 8,
-  },
-  instructionText: {
-    fontSize: 13,
-    color: '#666666',
-    lineHeight: 18,
-    marginBottom: 4,
-  },
-  compassGlass: {
-    position: 'absolute',
-    width: '96%',
-    height: '96%',
-    borderRadius: COMPASS_DIAL_SIZE / 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    zIndex: 20,
-  },
-  compassLabels: {
-    alignItems: 'center',
-    marginTop: 16,
-    paddingHorizontal: 32,
-  },
-  compassTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#263238',
-    marginBottom: 2,
-  },
-  compassSubtitle: {
-    fontSize: 13,
-    color: '#78909C',
-    textAlign: 'center',
-    lineHeight: 16,
-  },
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  scrollContent: { paddingBottom: 30 },
+  statusBanner: { backgroundColor: '#F5F5F5', paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  statusBannerAligned: { backgroundColor: '#10B981' },
+  statusBannerText: { color: '#666666', fontSize: 13, fontWeight: '500' },
+  statusBannerTextAligned: { color: '#FFFFFF', fontSize: 14, fontWeight: '600', marginLeft: 6 },
+  rowCenter: { flexDirection: 'row', alignItems: 'center' },
+  compassWrapperZone: { alignItems: 'center', justifyContent: 'center', marginTop: 70, marginBottom: 30 },
+  topTargetBeacon: { position: 'absolute', top: -50, alignItems: 'center', zIndex: 99 },
+  kaabaTargetNode: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#D1D5DB' },
+  kaabaTargetNodeActive: { backgroundColor: '#10B981', borderColor: '#059669' },
+  kaabaMarkerIcon: { fontSize: 20 },
+  targetIndicatorLine: { width: 3, height: 24, backgroundColor: '#D1D5DB', marginTop: 2 },
+  targetIndicatorLineActive: { backgroundColor: '#10B981' },
+  compassHousingFrame: { width: CORE_DIAL_DIMENSION, height: CORE_DIAL_DIMENSION, borderRadius: CORE_DIAL_DIMENSION / 2, backgroundColor: '#FFFFFF', borderWidth: 6, borderColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 4 },
+  compassHousingFrameAligned: { borderColor: '#A7F3D0' },
+  rotatableDial: { width: '100%', height: '100%', borderRadius: CORE_DIAL_DIMENSION / 2, position: 'relative', alignItems: 'center', justifyContent: 'center' },
+  cardinalPoint: { position: 'absolute', fontSize: 16, fontWeight: '700', color: '#1F2937' },
+  pointN: { top: 16, color: '#EF4444' },
+  pointE: { right: 16 },
+  pointS: { bottom: 16 },
+  pointW: { left: 16 },
+  scaleNode: { position: 'absolute', width: 2, height: CORE_DIAL_DIMENSION, alignItems: 'center' },
+  scaleTickMajor: { width: 2, height: 12, backgroundColor: '#4B5563' },
+  scaleTickMinor: { width: 1, height: 6, backgroundColor: '#9CA3AF' },
+  centerNeedleStem: { width: 4, height: CORE_DIAL_DIMENSION / 2.3, backgroundColor: '#D1D5DB', borderRadius: 2, position: 'absolute', bottom: '50%', transform: [{ translateY: CORE_DIAL_DIMENSION / 4.6 }] },
+  centerNeedleStemActive: { backgroundColor: '#10B981' },
+  centralCapPivot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#1F2937', position: 'absolute', zIndex: 10, borderWidth: 2, borderColor: '#FFFFFF' },
+  metricsContainer: { flexDirection: 'row', paddingHorizontal: 20, justifyContent: 'space-between', marginTop: 20 },
+  metricItemCard: { flex: 1, backgroundColor: '#F9FAFB', padding: 16, borderRadius: 12, alignItems: 'center', marginHorizontal: 6, borderWidth: 1, borderColor: '#F3F4F6' },
+  metricLabel: { fontSize: 11, color: '#6B7280', textTransform: 'uppercase', fontWeight: '600', marginTop: 4 },
+  metricValue: { fontSize: 15, fontWeight: '700', color: '#111827', marginTop: 2 },
+  calibrationButton: { backgroundColor: '#0C3A1A', marginHorizontal: 26, paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 30 },
+  buttonLabelText: { color: '#FFFFFF', fontWeight: '600', fontSize: 15 }
 });
