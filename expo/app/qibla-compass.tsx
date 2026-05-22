@@ -8,6 +8,7 @@ import {
   ScrollView,
   Dimensions,
   Animated,
+  PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
@@ -28,13 +29,24 @@ export default function QiblaCompassScreen() {
   const [locationStatus, setLocationStatus] = useState<string>('Getting location...');
   const [distance, setDistance] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [deviceHeading, setDeviceHeading] = useState<number>(0);
+  const [isAligned, setIsAligned] = useState<boolean>(false);
   
-  // Independent high-performance animation streams using native drivers
+  // Track if user is currently spinning the compass manually
+  const isUserInteracting = useRef<boolean>(false);
+  
+  // Persistent tracking of live sensor values
+  const currentHeadingRef = useRef<number>(0);
+  const qiblaDirectionRef = useRef<number>(0);
+  
+  // Animated values
   const dialRotationAnim = useRef(new Animated.Value(0)).current;
   const arrowRotationAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const magnetometerSubscription = useRef<any>(null);
+
+  // Track the offset where the spin gesture started
+  const panStartValueDial = useRef<number>(0);
+  const panStartValueArrow = useRef<number>(0);
 
   const { 
     requestLocationPermission: requestPermission, 
@@ -54,29 +66,11 @@ export default function QiblaCompassScreen() {
     if (userLocation) {
       const qibla = calculateQiblaDirection(userLocation, KAABA_COORDS);
       setQiblaDirection(qibla);
+      qiblaDirectionRef.current = qibla;
       const dist = calculateDistance(userLocation, KAABA_COORDS);
       setDistance(dist);
     }
   }, [userLocation]);
-
-  useEffect(() => {
-    // 1. The main dial shifts inverse to the physical device heading to stick to true North
-    Animated.spring(dialRotationAnim, {
-      toValue: -deviceHeading,
-      useNativeDriver: true,
-      friction: 9,
-      tension: 40,
-    }).start();
-
-    // 2. The arrow shifts relative to both the target path and the current position tracking
-    const targetArrowRotation = qiblaDirection - deviceHeading;
-    Animated.spring(arrowRotationAnim, {
-      toValue: targetArrowRotation,
-      useNativeDriver: true,
-      friction: 9,
-      tension: 40,
-    }).start();
-  }, [deviceHeading, qiblaDirection]);
 
   useEffect(() => {
     const pulseAnimation = Animated.loop(
@@ -94,9 +88,52 @@ export default function QiblaCompassScreen() {
       ])
     );
     pulseAnimation.start();
-    
     return () => pulseAnimation.stop();
   }, []);
+
+  // --- GESTURE INTERACTION CONTROLLER ---
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        // 1. Tell our app to ignore hardware sensors while finger dragging
+        isUserInteracting.current = true;
+        
+        // 2. Capture the current exact rotational value position before moving
+        panStartValueDial.current = (dialRotationAnim as any)._value;
+        panStartValueArrow.current = (arrowRotationAnim as any)._value;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        // Convert horizontal drag pixels (dx) into rotational degrees
+        // Dividing by 2 makes the dial rotational sensitivity feel natural
+        const degreesDelta = gestureState.dx / 2; 
+        
+        dialRotationAnim.setValue(panStartValueDial.current + degreesDelta);
+        arrowRotationAnim.setValue(panStartValueArrow.current + degreesDelta);
+      },
+      onPanResponderRelease: () => {
+        // 3. Finger lifted! Animate smoothly back to hardware sync placement
+        Animated.parallel([
+          Animated.spring(dialRotationAnim, {
+            toValue: -currentHeadingRef.current,
+            useNativeDriver: true,
+            friction: 6, // Low friction gives it a nice elastic bounce
+            tension: 40,
+          }),
+          Animated.spring(arrowRotationAnim, {
+            toValue: qiblaDirectionRef.current - currentHeadingRef.current,
+            useNativeDriver: true,
+            friction: 6,
+            tension: 40,
+          }),
+        ]).start(() => {
+          // 4. Hand control back over to sensor tracking once the bounce animation ends
+          isUserInteracting.current = false;
+        });
+      },
+    })
+  ).current;
 
   const startMagnetometer = async () => {
     try {
@@ -106,16 +143,37 @@ export default function QiblaCompassScreen() {
         return;
       }
 
-      // 80ms interval offers smooth 60fps response matrices without killing battery
-      Magnetometer.setUpdateInterval(80);
+      Magnetometer.setUpdateInterval(50);
       magnetometerSubscription.current = Magnetometer.addListener((data) => {
         const { x, y } = data;
-        let heading = Math.atan2(y, x) * (180 / Math.PI);
+        let heading = Math.atan2(-x, y) * (180 / Math.PI);
         heading = heading < 0 ? heading + 360 : heading;
         
-        // Android and iOS track sensor orientation fields differently at root kernel level
         const adjustedHeading = Platform.OS === 'ios' ? heading : (heading + 90) % 360;
-        setDeviceHeading(adjustedHeading);
+        currentHeadingRef.current = adjustedHeading;
+
+        // ONLY update animation frame values if user isn't spinning the compass manually
+        if (!isUserInteracting.current) {
+          Animated.spring(dialRotationAnim, {
+            toValue: -adjustedHeading,
+            useNativeDriver: true,
+            friction: 9,
+            tension: 50,
+          }).start();
+
+          const targetArrowRotation = qiblaDirectionRef.current - adjustedHeading;
+          Animated.spring(arrowRotationAnim, {
+            toValue: targetArrowRotation,
+            useNativeDriver: true,
+            friction: 9,
+            tension: 50,
+          }).start();
+        }
+
+        const currentOffset = Math.abs((qiblaDirectionRef.current - adjustedHeading + 360) % 360);
+        const aligned = currentOffset < 4 || currentOffset > 356;
+        
+        setIsAligned((prev) => (prev !== aligned ? aligned : prev));
       });
     } catch (error) {
       console.error('Error starting magnetometer:', error);
@@ -202,10 +260,6 @@ export default function QiblaCompassScreen() {
     return directions[index];
   };
 
-  // Determine if the user is accurately aligned within a strict 4-degree window
-  const currentOffset = Math.abs((qiblaDirection - deviceHeading + 360) % 360);
-  const isAligned = currentOffset < 4 || currentOffset > 356;
-
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen 
@@ -261,8 +315,9 @@ export default function QiblaCompassScreen() {
               </View>
             </View>
 
+            {/* FIXED: The compass base container now maps the gesture handlers directly over the visual interface elements */}
             <View style={styles.compassContainer}>
-              <View style={styles.compass3DBase}>
+              <View style={styles.compass3DBase} {...panResponder.panHandlers}>
                 <View style={styles.compassRim}>
                   <View style={styles.compassOuterRing} />
                   
@@ -274,8 +329,8 @@ export default function QiblaCompassScreen() {
                         {
                           transform: [{
                             rotate: dialRotationAnim.interpolate({
-                              inputRange: [-360, 360],
-                              outputRange: ['-360deg', '360deg']
+                              inputRange: [-720, 720],
+                              outputRange: ['-720deg', '720deg']
                             })
                           }]
                         }
@@ -312,8 +367,8 @@ export default function QiblaCompassScreen() {
                         { 
                           transform: [{ 
                             rotate: arrowRotationAnim.interpolate({
-                              inputRange: [-360, 360],
-                              outputRange: ['-360deg', '360deg']
+                              inputRange: [-720, 720],
+                              outputRange: ['-720deg', '720deg']
                             }) 
                           }] 
                         }
@@ -349,7 +404,7 @@ export default function QiblaCompassScreen() {
               <View style={styles.compassLabels}>
                 <Text style={styles.compassTitle}>Qibla Compass</Text>
                 <Text style={styles.compassSubtitle}>
-                  {isAligned ? 'Perfectly aligned with Mecca!' : 'Rotate phone until the arrow looks straight up'}
+                  Try spinning the dial with your finger!
                 </Text>
               </View>
             </View>
@@ -385,9 +440,8 @@ export default function QiblaCompassScreen() {
 
         <View style={styles.instructions}>
           <Text style={styles.instructionTitle}>How to use:</Text>
-          <Text style={styles.instructionText}>• Allow location access when prompted</Text>
-          <Text style={styles.instructionText}>• Face the direction shown by the green arrow</Text>
-          <Text style={styles.instructionText}>• The app card turns vibrant green when perfectly aligned</Text>
+          <Text style={styles.instructionText}>• Swipe across the compass face to manually spin it</Text>
+          <Text style={styles.instructionText}>• Release your finger to watch it snap back smoothly</Text>
           <Text style={styles.instructionText}>• Lay phone flat on your hand for maximum hardware tracking accuracy</Text>
         </View>
 
@@ -441,7 +495,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginHorizontal: 20,
     marginBottom: 20,
-    transition: 'background-color 0.3s ease',
     ...Platform.select({
       ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
       android: { elevation: 6 },
@@ -556,22 +609,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#BDC3C7',
     overflow: 'hidden',
-  },
-  northIndicator3D: {
-    position: 'absolute',
-    top: 15,
-    backgroundColor: '#E74C3C',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
-    zIndex: 10,
-    borderWidth: 2,
-    borderColor: '#C0392B',
-  },
-  northText3D: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: 'bold',
   },
   cardinalContainer: {
     position: 'absolute',
