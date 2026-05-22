@@ -76,7 +76,7 @@ export default function MoreScreen() {
           id: "about",
           title: t("about"),
           icon: Info,
-          subtitle: t("aboutTravelMakkah"),
+          subtitle: t("aboutMuslimUltra"),
           hasArrow: true,
         },
       ],
@@ -110,7 +110,7 @@ export default function MoreScreen() {
   ];
 
   const handleSendFeedback = () => {
-    const email = "support@travelmakkah.com";
+    const email = "support@mahnoor.online";
     const subject = "Muslim Ultra App Feedback";
     const body = `App Version: 1.0.0\nDevice: ${Platform.OS}\n\nFeedback:\n\n`;
     
@@ -142,8 +142,8 @@ export default function MoreScreen() {
 
   const handleRateUs = () => {
     const appStoreUrl = Platform.select({
-      ios: "https://apps.apple.com/app/travel-makkah/id123456789", // Replace with actual App Store ID
-      android: "https://play.google.com/store/apps/details?id=com.travelmakkah.app", // Replace with actual package name
+      ios: "https://apps.apple.com/app/muslim-ultra/id123456789", // Replace with actual App Store ID
+      android: "https://play.google.com/store/apps/details?id=com.muslimultra.app", // Replace with actual package name
       default: ""
     });
 
@@ -157,7 +157,7 @@ export default function MoreScreen() {
     }
 
     Alert.alert(
-      t("rateTravelMakkah"),
+      t("rateMuslimUltra"),
       t("rateAppMessage"),
       [
         { text: t("notNow"), style: "cancel" },
@@ -179,15 +179,15 @@ export default function MoreScreen() {
 
   const handleShareApp = async () => {
     const message = Platform.select({
-      ios: `${t("checkOutTravelMakkah")} ${t("downloadFromAppStore")} https://apps.apple.com/app/travel-makkah/id123456789`,
-      android: `${t("checkOutTravelMakkah")} ${t("downloadFromGooglePlay")} https://play.google.com/store/apps/details?id=com.travelmakkah.app`,
-      default: t("checkOutTravelMakkah")
+      ios: `${t("checkOutMuslimUltra")} ${t("downloadFromAppStore")} https://apps.apple.com/app/muslim-ultra/id123456789`,
+      android: `${t("checkOutMuslimUltra")} ${t("downloadFromGooglePlay")} https://play.google.com/store/apps/details?id=com.muslimultra.app`,
+      default: t("checkOutMuslimUltra")
     });
 
     try {
       const result = await Share.share({
         message: message,
-        title: t("travelMakkah"),
+        title: t("muslimUltra"),
       });
 
       if (result.action === Share.sharedAction) {
