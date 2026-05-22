@@ -1,849 +1,742 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  StyleSheet,
-  Text,
   View,
-  Platform,
-  TouchableOpacity,
+  Text,
+  StyleSheet,
   ScrollView,
-  Dimensions,
-  Animated,
-  PanResponder,
+  TouchableOpacity,
+  TextInput,
+  Modal,
+  FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
-import { useLocation } from '@/providers/LocationProvider';
-import { MapPin, Compass, Navigation } from 'lucide-react-native';
-import { Magnetometer } from 'expo-sensors';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { ChevronLeft, ChevronRight, X, Bookmark, Settings } from 'lucide-react-native';
+import { useTheme } from '@/providers/ThemeProvider';
+import { surahList, sampleVerses, Surah, Verse } from '@/data/quranData';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const KAABA_COORDS = { latitude: 21.4225, longitude: 39.8262 };
-
-interface LocationCoords {
-  latitude: number;
-  longitude: number;
-}
-
-export default function QiblaCompassScreen() {
-  const [userLocation, setUserLocation] = useState<LocationCoords | null>(null);
-  const [qiblaDirection, setQiblaDirection] = useState<number>(0);
-  const [locationStatus, setLocationStatus] = useState<string>('Getting location...');
-  const [distance, setDistance] = useState<number>(0);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isAligned, setIsAligned] = useState<boolean>(false);
+export default function QuranScreen() {
+  const { colors } = useTheme();
+  const { surah: surahParam } = useLocalSearchParams<{ surah?: string }>();
   
-  // Track if user is currently spinning the compass manually
-  const isUserInteracting = useRef<boolean>(false);
+  // Initialize with the surah from URL parameter or default to Al-Fatihah
+  const initialSurah = surahParam 
+    ? surahList.find(s => s.id === parseInt(surahParam, 10)) || surahList[0]
+    : surahList[0];
   
-  // Persistent tracking of live sensor values
-  const currentHeadingRef = useRef<number>(0);
-  const qiblaDirectionRef = useRef<number>(0);
-  
-  // Animated values
-  const dialRotationAnim = useRef(new Animated.Value(0)).current;
-  const arrowRotationAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const magnetometerSubscription = useRef<any>(null);
+  const [selectedSurah, setSelectedSurah] = useState<Surah>(initialSurah);
+  const [verses, setVerses] = useState<Verse[]>(sampleVerses);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSurahList, setShowSurahList] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [fontSize, setFontSize] = useState(18);
+  const [showTranslation, setShowTranslation] = useState(true);
+  const [showTransliteration, setShowTransliteration] = useState(false);
+  const [scriptType, setScriptType] = useState<'standard' | 'uthmanic'>('standard');
+  const [bookmarks, setBookmarks] = useState<number[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
 
-  // Track the offset where the spin gesture started
-  const panStartValueDial = useRef<number>(0);
-  const panStartValueArrow = useRef<number>(0);
-
-  const { 
-    requestLocationPermission: requestPermission, 
-    getCurrentLocation,
-  } = useLocation();
+  // Function to get Uthmanic script text
+  const getUthmanicText = (verse: Verse): string => {
+    // Return Uthmanic script if available, otherwise fallback to standard Arabic
+    return verse.uthmanic || verse.arabic;
+  };
 
   useEffect(() => {
-    requestLocationPermission();
-    startMagnetometer();
-    
-    return () => {
-      stopMagnetometer();
-    };
+    loadSettings();
+    loadBookmarks();
   }, []);
 
+  // Handle surah parameter changes
   useEffect(() => {
-    if (userLocation) {
-      const qibla = calculateQiblaDirection(userLocation, KAABA_COORDS);
-      setQiblaDirection(qibla);
-      qiblaDirectionRef.current = qibla;
-      const dist = calculateDistance(userLocation, KAABA_COORDS);
-      setDistance(dist);
-    }
-  }, [userLocation]);
-
-  useEffect(() => {
-    const pulseAnimation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.15,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    pulseAnimation.start();
-    return () => pulseAnimation.stop();
-  }, []);
-
-  // --- GESTURE INTERACTION CONTROLLER ---
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        // 1. Tell our app to ignore hardware sensors while finger dragging
-        isUserInteracting.current = true;
-        
-        // 2. Capture the current exact rotational value position before moving
-        panStartValueDial.current = (dialRotationAnim as any)._value;
-        panStartValueArrow.current = (arrowRotationAnim as any)._value;
-      },
-      onPanResponderMove: (_, gestureState) => {
-        // Convert horizontal drag pixels (dx) into rotational degrees
-        // Dividing by 2 makes the dial rotational sensitivity feel natural
-        const degreesDelta = gestureState.dx / 2; 
-        
-        dialRotationAnim.setValue(panStartValueDial.current + degreesDelta);
-        arrowRotationAnim.setValue(panStartValueArrow.current + degreesDelta);
-      },
-      onPanResponderRelease: () => {
-        // 3. Finger lifted! Animate smoothly back to hardware sync placement
-        Animated.parallel([
-          Animated.spring(dialRotationAnim, {
-            toValue: -currentHeadingRef.current,
-            useNativeDriver: true,
-            friction: 6, // Low friction gives it a nice elastic bounce
-            tension: 40,
-          }),
-          Animated.spring(arrowRotationAnim, {
-            toValue: qiblaDirectionRef.current - currentHeadingRef.current,
-            useNativeDriver: true,
-            friction: 6,
-            tension: 40,
-          }),
-        ]).start(() => {
-          // 4. Hand control back over to sensor tracking once the bounce animation ends
-          isUserInteracting.current = false;
-        });
-      },
-    })
-  ).current;
-
-  const startMagnetometer = async () => {
-    try {
-      const isAvailable = await Magnetometer.isAvailableAsync();
-      if (!isAvailable) {
-        setLocationStatus('Compass sensor unavailable');
-        return;
+    if (surahParam) {
+      const targetSurah = surahList.find(s => s.id === parseInt(surahParam, 10));
+      if (targetSurah && targetSurah.id !== selectedSurah.id) {
+        console.log('Navigating to surah from URL parameter:', targetSurah.name);
+        setSelectedSurah(targetSurah);
       }
+    }
+  }, [surahParam]);
 
-      Magnetometer.setUpdateInterval(50);
-      magnetometerSubscription.current = Magnetometer.addListener((data) => {
-        const { x, y } = data;
-        let heading = Math.atan2(-x, y) * (180 / Math.PI);
-        heading = heading < 0 ? heading + 360 : heading;
-        
-        const adjustedHeading = Platform.OS === 'ios' ? heading : (heading + 90) % 360;
-        currentHeadingRef.current = adjustedHeading;
+  useEffect(() => {
+    loadVerses(selectedSurah.id);
+  }, [selectedSurah]);
 
-        // ONLY update animation frame values if user isn't spinning the compass manually
-        if (!isUserInteracting.current) {
-          Animated.spring(dialRotationAnim, {
-            toValue: -adjustedHeading,
-            useNativeDriver: true,
-            friction: 9,
-            tension: 50,
-          }).start();
-
-          const targetArrowRotation = qiblaDirectionRef.current - adjustedHeading;
-          Animated.spring(arrowRotationAnim, {
-            toValue: targetArrowRotation,
-            useNativeDriver: true,
-            friction: 9,
-            tension: 50,
-          }).start();
-        }
-
-        const currentOffset = Math.abs((qiblaDirectionRef.current - adjustedHeading + 360) % 360);
-        const aligned = currentOffset < 4 || currentOffset > 356;
-        
-        setIsAligned((prev) => (prev !== aligned ? aligned : prev));
-      });
+  const loadSettings = async () => {
+    try {
+      const settings = await AsyncStorage.getItem('quranSettings');
+      if (settings) {
+        const parsed = JSON.parse(settings);
+        setFontSize(parsed.fontSize || 18);
+        setShowTranslation(parsed.showTranslation !== false);
+        setShowTransliteration(parsed.showTransliteration || false);
+        setScriptType(parsed.scriptType || 'standard');
+      }
     } catch (error) {
-      console.error('Error starting magnetometer:', error);
+      console.error('Error loading settings:', error);
     }
   };
 
-  const stopMagnetometer = () => {
-    if (magnetometerSubscription.current) {
-      magnetometerSubscription.current.remove();
-      magnetometerSubscription.current = null;
-    }
-  };
-
-  const requestLocationPermission = async () => {
+  const saveSettings = async () => {
     try {
-      setIsLoading(true);
-      const granted = await requestPermission();
-      if (!granted) {
-        setLocationStatus('Location permission denied');
-        return;
+      await AsyncStorage.setItem('quranSettings', JSON.stringify({
+        fontSize,
+        showTranslation,
+        showTransliteration,
+        scriptType,
+      }));
+    } catch (error) {
+      console.error('Error saving settings:', error);
+    }
+  };
+
+  const loadBookmarks = async () => {
+    try {
+      const saved = await AsyncStorage.getItem('quranBookmarks');
+      if (saved) {
+        setBookmarks(JSON.parse(saved));
+      }
+    } catch (error) {
+      console.error('Error loading bookmarks:', error);
+    }
+  };
+
+  const toggleBookmark = async (verseId: number) => {
+    const updated = bookmarks.includes(verseId)
+      ? bookmarks.filter(id => id !== verseId)
+      : [...bookmarks, verseId];
+    setBookmarks(updated);
+    await AsyncStorage.setItem('quranBookmarks', JSON.stringify(updated));
+  };
+
+  const loadVerses = async (surahId: number) => {
+    setIsLoading(true);
+    try {
+      console.log('Loading verses for surah:', surahId);
+      
+      // Fetch from Quran API
+      const response = await fetch(`https://api.quran.com/api/v4/verses/by_chapter/${surahId}?language=en&words=false&translations=131&fields=text_uthmani,text_imlaei`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
       
-      setLocationStatus('Getting your location...');
-      const location = await getCurrentLocation();
+      const data = await response.json();
+      console.log('API Response:', data);
       
-      if (location) {
-        setUserLocation({
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-        });
-        setLocationStatus('Location found');
+      if (data.verses && Array.isArray(data.verses)) {
+        const formattedVerses: Verse[] = data.verses.map((verse: any) => ({
+          id: verse.id,
+          surahId: verse.chapter_id,
+          verseNumber: verse.verse_number,
+          arabic: verse.text_imlaei || verse.text_uthmani,
+          uthmanic: verse.text_uthmani,
+          translation: verse.translations?.[0]?.text || 'Translation not available',
+          transliteration: `Verse ${verse.verse_number} transliteration`
+        }));
+        
+        console.log('Formatted verses:', formattedVerses.length);
+        setVerses(formattedVerses);
       } else {
-        setLocationStatus('Failed to get location');
+        console.warn('No verses found in API response');
+        // Fallback to sample data
+        if (surahId === 1) {
+          setVerses(sampleVerses);
+        } else {
+          setVerses([]);
+        }
       }
     } catch (error) {
-      console.error('Error getting location:', error);
-      setLocationStatus('Failed to get location');
+      console.error('Error loading verses:', error);
+      
+      // Fallback to sample data on error
+      if (surahId === 1) {
+        setVerses(sampleVerses);
+      } else {
+        // Generate fallback verses
+        const surah = surahList.find((s: Surah) => s.id === surahId);
+        if (surah) {
+          const fallbackVerses: Verse[] = Array.from({ length: Math.min(5, surah.verses) }, (_, i) => ({
+            id: surahId * 1000 + i + 1,
+            surahId,
+            verseNumber: i + 1,
+            arabic: 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ',
+            uthmanic: 'بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ',
+            translation: `Verse ${i + 1} of ${surah.name}. Please check your internet connection for full content.`,
+            transliteration: `Verse ${i + 1} transliteration`
+          }));
+          setVerses(fallbackVerses);
+        } else {
+          setVerses([]);
+        }
+      }
     } finally {
       setIsLoading(false);
+      scrollViewRef.current?.scrollTo({ y: 0, animated: false });
     }
   };
 
-  const calculateQiblaDirection = (userCoords: LocationCoords, kaabaCoords: LocationCoords): number => {
-    const lat1 = (userCoords.latitude * Math.PI) / 180;
-    const lat2 = (kaabaCoords.latitude * Math.PI) / 180;
-    const deltaLng = ((kaabaCoords.longitude - userCoords.longitude) * Math.PI) / 180;
-
-    const x = Math.sin(deltaLng) * Math.cos(lat2);
-    const y = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
-
-    let bearing = Math.atan2(x, y);
-    bearing = (bearing * 180) / Math.PI;
-    return (bearing + 360) % 360;
+  const navigateSurah = (direction: 'prev' | 'next') => {
+    const currentIndex = surahList.findIndex((s: Surah) => s.id === selectedSurah.id);
+    if (direction === 'prev' && currentIndex > 0) {
+      setSelectedSurah(surahList[currentIndex - 1]);
+    } else if (direction === 'next' && currentIndex < surahList.length - 1) {
+      setSelectedSurah(surahList[currentIndex + 1]);
+    }
   };
 
-  const calculateDistance = (userCoords: LocationCoords, kaabaCoords: LocationCoords): number => {
-    const R = 6371; 
-    const lat1 = (userCoords.latitude * Math.PI) / 180;
-    const lat2 = (kaabaCoords.latitude * Math.PI) / 180;
-    const deltaLat = ((kaabaCoords.latitude - userCoords.latitude) * Math.PI) / 180;
-    const deltaLng = ((kaabaCoords.longitude - userCoords.longitude) * Math.PI) / 180;
+  const filteredSurahs = surahList.filter((surah: Surah) =>
+    surah.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    surah.englishName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    surah.arabicName.includes(searchQuery)
+  );
 
-    const a =
-      Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
-      Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  };
-
-  const refreshLocation = () => {
-    setUserLocation(null);
-    setLocationStatus('Getting location...');
-    requestLocationPermission();
-  };
-
-  const getDirectionName = (degrees: number): string => {
-    const directions = [
-      'North', 'North-Northeast', 'Northeast', 'East-Northeast',
-      'East', 'East-Southeast', 'Southeast', 'South-Southeast',
-      'South', 'South-Southwest', 'Southwest', 'West-Southwest',
-      'West', 'West-Northwest', 'Northwest', 'North-Northwest'
-    ];
-    const index = Math.round(degrees / 22.5) % 16;
-    return directions[index];
+  const renderVerse = ({ item }: { item: Verse }) => {
+    const isBookmarked = bookmarks.includes(item.id);
+    
+    return (
+      <View style={[styles.verseContainer, { backgroundColor: colors.card }]}>
+        <View style={styles.verseHeader}>
+          <View style={[styles.verseNumber, { backgroundColor: colors.primary }]}>
+            <Text style={[styles.verseNumberText, { color: '#fff' }]}>
+              {item.verseNumber}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => toggleBookmark(item.id)}
+            style={styles.bookmarkButton}
+          >
+            <Bookmark
+              size={20}
+              color={isBookmarked ? colors.primary : colors.textSecondary}
+              fill={isBookmarked ? colors.primary : 'transparent'}
+            />
+          </TouchableOpacity>
+        </View>
+        
+        <Text style={[
+          styles.arabicText,
+          scriptType === 'uthmanic' ? styles.uthmanicText : styles.standardText,
+          { color: colors.text, fontSize: fontSize + 8 }
+        ]}>
+          {scriptType === 'uthmanic' ? getUthmanicText(item) : item.arabic}
+        </Text>
+        
+        {showTransliteration && (
+          <Text style={[
+            styles.transliterationText,
+            { color: colors.textSecondary, fontSize: fontSize - 2 }
+          ]}>
+            {item.transliteration}
+          </Text>
+        )}
+        
+        {showTranslation && (
+          <Text style={[
+            styles.translationText,
+            { color: colors.text, fontSize: fontSize }
+          ]}>
+            {item.translation}
+          </Text>
+        )}
+      </View>
+    );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Stack.Screen 
-        options={{ 
-          title: 'Qibla Direction',
-          headerStyle: { backgroundColor: '#1B5E20' },
-          headerTintColor: '#FFFFFF',
-        }} 
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <Stack.Screen
+        options={{
+          headerShown: false,
+        }}
       />
       
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        bounces={true}
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
+          <ChevronLeft size={24} color={colors.text} />
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={styles.headerCenter}
+          onPress={() => setShowSurahList(true)}
+        >
+          <Text style={[styles.surahName, { color: colors.text }]}>
+            {selectedSurah.arabicName}
+          </Text>
+          <Text style={[styles.surahInfo, { color: colors.textSecondary }]}>
+            {selectedSurah.name} • {selectedSurah.verses} verses
+          </Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          onPress={() => {
+            console.log('Settings button pressed, current state:', showSettings);
+            setShowSettings(true);
+          }} 
+          style={[styles.settingsButton, { backgroundColor: colors.primary }]}
+          testID="settings-button"
+        >
+          <Settings size={20} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Navigation Bar */}
+      <View style={[styles.navigationBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <TouchableOpacity
+          style={[styles.navButton, selectedSurah.id === 1 && styles.navButtonDisabled]}
+          onPress={() => navigateSurah('prev')}
+          disabled={selectedSurah.id === 1}
+        >
+          <ChevronLeft size={20} color={selectedSurah.id === 1 ? colors.textSecondary : colors.primary} />
+          <Text style={[styles.navButtonText, { color: selectedSurah.id === 1 ? colors.textSecondary : colors.primary }]}>
+            Previous
+          </Text>
+        </TouchableOpacity>
+        
+        <View style={styles.navCenter}>
+          <Text style={[styles.navCenterText, { color: colors.textSecondary }]}>
+            {selectedSurah.revelationType} • Surah {selectedSurah.id}
+          </Text>
+        </View>
+        
+        <TouchableOpacity
+          style={[styles.navButton, selectedSurah.id === 114 && styles.navButtonDisabled]}
+          onPress={() => navigateSurah('next')}
+          disabled={selectedSurah.id === 114}
+        >
+          <Text style={[styles.navButtonText, { color: selectedSurah.id === 114 ? colors.textSecondary : colors.primary }]}>
+            Next
+          </Text>
+          <ChevronRight size={20} color={selectedSurah.id === 114 ? colors.textSecondary : colors.primary} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Verses */}
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : (
+        <FlatList
+          ref={scrollViewRef as any}
+          data={verses}
+          renderItem={renderVerse}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.versesContainer}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+
+      {/* Surah List Modal */}
+      <Modal
+        visible={showSurahList}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowSurahList(false)}
       >
-        <View style={styles.header}>
-          <Compass size={48} color="#1B5E20" />
-          <Text style={styles.title}>🕋 Qibla Direction Calculator</Text>
-          <Text style={styles.subtitle}>{locationStatus}</Text>
-        </View>
-
-        {userLocation ? (
-          <>
-            <View style={[styles.directionCard, isAligned && styles.directionCardAligned]}>
-              <View style={styles.qiblaIconContainer}>
-                <Text style={styles.kaabaEmoji}>🕋</Text>
-              </View>
-              <Text style={[styles.qiblaDirectionText, isAligned && styles.textWhiteDim]}>
-                {isAligned ? 'Perfectly Aligned' : 'Qibla Direction'}
-              </Text>
-              <Text style={[styles.qiblaAngle, isAligned && styles.textWhite]}>
-                {Math.round(qiblaDirection)}°
-              </Text>
-              <Text style={[styles.directionName, isAligned && styles.textWhiteHighlight]}>
-                {getDirectionName(qiblaDirection)}
-              </Text>
-            </View>
-
-            <View style={styles.infoGrid}>
-              <View style={styles.infoCard}>
-                <Navigation size={24} color="#4CAF50" />
-                <Text style={styles.infoLabel}>Distance to Kaaba</Text>
-                <Text style={styles.infoValue}>{Math.round(distance)} km</Text>
-              </View>
-              
-              <View style={styles.infoCard}>
-                <MapPin size={24} color="#2196F3" />
-                <Text style={styles.infoLabel}>Your Location</Text>
-                <Text style={styles.infoValue}>
-                  {userLocation.latitude.toFixed(2)}°, {userLocation.longitude.toFixed(2)}°
-                </Text>
-              </View>
-            </View>
-
-            {/* FIXED: The compass base container now maps the gesture handlers directly over the visual interface elements */}
-            <View style={styles.compassContainer}>
-              <View style={styles.compass3DBase} {...panResponder.panHandlers}>
-                <View style={styles.compassRim}>
-                  <View style={styles.compassOuterRing} />
-                  
-                  <View style={styles.compassFace}>
-                    {/* ROTATING BACKGROUND DIAL NODE */}
-                    <Animated.View 
-                      style={[
-                        styles.cardinalContainer, 
-                        {
-                          transform: [{
-                            rotate: dialRotationAnim.interpolate({
-                              inputRange: [-720, 720],
-                              outputRange: ['-720deg', '720deg']
-                            })
-                          }]
-                        }
-                      ]}
-                    >
-                      <Text style={[styles.cardinalDirection3D, styles.directionNorth]}>N</Text>
-                      <Text style={[styles.cardinalDirection3D, styles.directionEast]}>E</Text>
-                      <Text style={[styles.cardinalDirection3D, styles.directionSouth]}>S</Text>
-                      <Text style={[styles.cardinalDirection3D, styles.directionWest]}>W</Text>
-
-                      {Array.from({ length: 36 }, (_, i) => i * 10).map((degree) => (
-                        <View
-                          key={degree}
-                          style={[
-                            styles.degreeMarker3D,
-                            { transform: [{ rotate: `${degree}deg` }] }
-                          ]}
-                        >
-                          <View style={[
-                            degree % 90 === 0 ? styles.majorTick : 
-                            degree % 30 === 0 ? styles.mediumTick : styles.minorTick
-                          ]} />
-                          {degree % 30 === 0 && degree % 90 !== 0 && (
-                            <Text style={styles.degreeText}>{degree}°</Text>
-                          )}
-                        </View>
-                      ))}
-                    </Animated.View>
-                    
-                    {/* ROTATING FOREGROUND ARROW & KAABA */}
-                    <Animated.View 
-                      style={[
-                        styles.qiblaArrow3D,
-                        { 
-                          transform: [{ 
-                            rotate: arrowRotationAnim.interpolate({
-                              inputRange: [-720, 720],
-                              outputRange: ['-720deg', '720deg']
-                            }) 
-                          }] 
-                        }
-                      ]}
-                    >
-                      <View style={styles.arrowShadow} />
-                      <View style={[styles.arrowLine3D, isAligned && styles.arrowLineAligned]} />
-                      <View style={[styles.arrowHead3D, isAligned && styles.arrowHeadAligned]} />
-
-                      <Animated.View 
-                        style={[
-                          styles.kaabaIndicator,
-                          { transform: [{ scale: pulseAnim }] }
-                        ]}
-                      >
-                        <View style={[styles.kaabaSymbol, isAligned && styles.kaabaSymbolAligned]}>
-                          <View style={styles.kaabaBase} />
-                          <View style={styles.kaabaDoor} />
-                          <Text style={styles.kaabaText}>🕋</Text>
-                        </View>
-                      </Animated.View>
-                    </Animated.View>
-                    
-                    <View style={styles.centerDot3D}>
-                      <View style={styles.centerDotInner} />
-                    </View>
-                    
-                    <View style={styles.compassGlass} />
-                  </View>
-                </View>
-              </View>
-              
-              <View style={styles.compassLabels}>
-                <Text style={styles.compassTitle}>Qibla Compass</Text>
-                <Text style={styles.compassSubtitle}>
-                  Try spinning the dial with your finger!
-                </Text>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={styles.refreshButton}
-              onPress={refreshLocation}
-              activeOpacity={0.7}
-              disabled={isLoading}
-            >
-              <MapPin size={20} color="#FFFFFF" />
-              <Text style={styles.buttonText}>
-                {isLoading ? 'Getting Location...' : 'Refresh Location'}
-              </Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <View style={styles.loadingContainer}>
-            <Compass size={64} color="#1B5E20" />
-            <Text style={styles.loadingText}>{locationStatus}</Text>
-            {!isLoading && (
-              <TouchableOpacity
-                style={styles.getLocationButton}
-                onPress={refreshLocation}
-                activeOpacity={0.7}
-              >
-                <MapPin size={20} color="#FFFFFF" />
-                <Text style={styles.buttonText}>Get My Location</Text>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Select Surah</Text>
+              <TouchableOpacity onPress={() => setShowSurahList(false)}>
+                <X size={24} color={colors.text} />
               </TouchableOpacity>
-            )}
+            </View>
+            
+            <TextInput
+              style={[styles.searchInput, { backgroundColor: colors.background, color: colors.text }]}
+              placeholder="Search surah..."
+              placeholderTextColor={colors.textSecondary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            
+            <FlatList
+              data={filteredSurahs}
+              keyExtractor={(item) => item.id.toString()}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.surahItem,
+                    { backgroundColor: item.id === selectedSurah.id ? colors.primary + '20' : 'transparent' }
+                  ]}
+                  onPress={() => {
+                    setSelectedSurah(item);
+                    setShowSurahList(false);
+                    setSearchQuery('');
+                  }}
+                >
+                  <View style={[styles.surahNumber, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.surahNumberText}>{item.id}</Text>
+                  </View>
+                  <View style={styles.surahItemContent}>
+                    <Text style={[styles.surahItemName, { color: colors.text }]}>
+                      {item.name}
+                    </Text>
+                    <Text style={[styles.surahItemInfo, { color: colors.textSecondary }]}>
+                      {item.englishName} • {item.verses} verses
+                    </Text>
+                  </View>
+                  <Text style={[styles.surahItemArabic, { color: colors.text }]}>
+                    {item.arabicName}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
           </View>
-        )}
-
-        <View style={styles.instructions}>
-          <Text style={styles.instructionTitle}>How to use:</Text>
-          <Text style={styles.instructionText}>• Swipe across the compass face to manually spin it</Text>
-          <Text style={styles.instructionText}>• Release your finger to watch it snap back smoothly</Text>
-          <Text style={styles.instructionText}>• Lay phone flat on your hand for maximum hardware tracking accuracy</Text>
         </View>
+      </Modal>
 
-        <View style={styles.additionalInfo}>
-          <Text style={styles.infoTitle}>📍 Kaaba Coordinates</Text>
-          <Text style={styles.infoText}>Latitude: 21.4225° N, Longitude: 39.8262° E</Text>
-          <Text style={styles.infoText}>Mecca, Saudi Arabia</Text>
-        </View>
-      </ScrollView>
+      {/* Settings Modal */}
+      <Modal
+        visible={showSettings}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => {
+          console.log('Settings modal closing');
+          setShowSettings(false);
+        }}
+      >
+        <SafeAreaView style={[styles.fullScreenModal, { backgroundColor: colors.background }]}>
+          <View style={[styles.settingsModal, { backgroundColor: colors.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Reading Settings</Text>
+              <TouchableOpacity onPress={() => {
+                setShowSettings(false);
+                saveSettings();
+              }}>
+                <X size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.settingItem}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Font Size</Text>
+              <View style={styles.fontSizeControls}>
+                <TouchableOpacity
+                  style={[styles.fontSizeButton, { backgroundColor: colors.background }]}
+                  onPress={() => setFontSize(Math.max(12, fontSize - 2))}
+                >
+                  <Text style={{ color: colors.text }}>A-</Text>
+                </TouchableOpacity>
+                <Text style={[styles.fontSizeValue, { color: colors.text }]}>{fontSize}</Text>
+                <TouchableOpacity
+                  style={[styles.fontSizeButton, { backgroundColor: colors.background }]}
+                  onPress={() => setFontSize(Math.min(30, fontSize + 2))}
+                >
+                  <Text style={{ color: colors.text }}>A+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            
+            <TouchableOpacity
+              style={styles.settingItem}
+              onPress={() => setShowTranslation(!showTranslation)}
+            >
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Show Translation</Text>
+              <View style={[styles.toggle, showTranslation && styles.toggleActive, { backgroundColor: showTranslation ? colors.primary : colors.border }]}>
+                <View style={[styles.toggleThumb, showTranslation && styles.toggleThumbActive]} />
+              </View>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.settingItem}
+              onPress={() => setShowTransliteration(!showTransliteration)}
+            >
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Show Transliteration</Text>
+              <View style={[styles.toggle, showTransliteration && styles.toggleActive, { backgroundColor: showTransliteration ? colors.primary : colors.border }]}>
+                <View style={[styles.toggleThumb, showTransliteration && styles.toggleThumbActive]} />
+              </View>
+            </TouchableOpacity>
+            
+            <View style={styles.settingItem}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Arabic Script</Text>
+              <View style={styles.scriptSelector}>
+                <TouchableOpacity
+                  style={[
+                    styles.scriptButton,
+                    { backgroundColor: scriptType === 'standard' ? colors.primary : colors.background },
+                  ]}
+                  onPress={() => setScriptType('standard')}
+                >
+                  <Text style={[
+                    styles.scriptButtonText,
+                    { color: scriptType === 'standard' ? '#fff' : colors.text }
+                  ]}>Standard</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.scriptButton,
+                    { backgroundColor: scriptType === 'uthmanic' ? colors.primary : colors.background },
+                  ]}
+                  onPress={() => setScriptType('uthmanic')}
+                >
+                  <Text style={[
+                    styles.scriptButtonText,
+                    { color: scriptType === 'uthmanic' ? '#fff' : colors.text }
+                  ]}>Uthmanic</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-const { width: screenWidth } = Dimensions.get('window');
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 30,
   },
   header: {
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#FFFFFF',
-    marginBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#1B5E20',
-    marginTop: 10,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#666666',
-    marginTop: 5,
-  },
-  directionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 30,
-    alignItems: 'center',
-    marginHorizontal: 20,
-    marginBottom: 20,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
-      android: { elevation: 6 },
-    }),
-  },
-  directionCardAligned: {
-    backgroundColor: '#1B5E20',
-  },
-  textWhite: { color: '#FFFFFF' },
-  textWhiteDim: { color: 'rgba(255,255,255,0.7)' },
-  textWhiteHighlight: { color: '#A5D6A7' },
-  qiblaIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#E8F5E8',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  kaabaEmoji: {
-    fontSize: 40,
-  },
-  qiblaDirectionText: {
-    fontSize: 18,
-    color: '#666666',
-    marginBottom: 5,
-  },
-  qiblaAngle: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: '#1B5E20',
-    marginBottom: 5,
-  },
-  directionName: {
-    fontSize: 16,
-    color: '#4CAF50',
-    fontWeight: '600',
-  },
-  infoGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginHorizontal: 20,
-    marginBottom: 20,
-  },
-  infoCard: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 15,
     alignItems: 'center',
-    marginHorizontal: 5,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4 },
-      android: { elevation: 3 },
-    }),
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
   },
-  infoLabel: {
-    fontSize: 12,
-    color: '#999999',
-    marginTop: 8,
-    marginBottom: 4,
-    textAlign: 'center',
+  headerButton: {
+    padding: 4,
   },
-  infoValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333333',
-    textAlign: 'center',
-  },
-  compassContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 30,
-    marginHorizontal: 20,
-  },
-  compass3DBase: {
-    width: Math.min(screenWidth - 60, 320),
-    height: Math.min(screenWidth - 60, 320),
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16 },
-      android: { elevation: 12 },
-    }),
-  },
-  compassRim: {
-    width: '100%',
-    height: '100%',
-    borderRadius: Math.min(screenWidth - 60, 320) / 2,
-    backgroundColor: '#2C3E50',
+  settingsButton: {
     padding: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  compassOuterRing: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    borderRadius: Math.min(screenWidth - 60, 320) / 2,
-    borderWidth: 4,
-    borderColor: '#34495E',
-  },
-  compassFace: {
-    width: '90%',
-    height: '90%',
-    borderRadius: (Math.min(screenWidth - 60, 320) * 0.9) / 2,
-    backgroundColor: '#FFFFFF',
-    position: 'relative',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#BDC3C7',
-    overflow: 'hidden',
-  },
-  cardinalContainer: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cardinalDirection3D: {
-    position: 'absolute',
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-    textShadowColor: '#BDC3C7',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
-  },
-  directionNorth: { top: 15, left: '50%', marginLeft: -10, color: '#E74C3C' },
-  directionEast: { right: 15, top: '50%', marginTop: -12 },
-  directionSouth: { bottom: 15, left: '50%', marginLeft: -10 },
-  directionWest: { left: 15, top: '50%', marginTop: -12 },
-  qiblaArrow3D: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 5,
-  },
-  arrowShadow: {
-    position: 'absolute',
-    width: 6,
-    height: Math.min(screenWidth - 60, 320) / 3.5,
-    backgroundColor: 'rgba(0,0,0,0.1)',
-    borderRadius: 3,
-    transform: [{ translateX: 2 }, { translateY: -18 }],
-  },
-  arrowLine3D: {
-    width: 6,
-    height: Math.min(screenWidth - 60, 320) / 3.5,
-    backgroundColor: '#7F8C8D',
-    borderRadius: 3,
-    transform: [{ translateY: -20 }],
-  },
-  arrowLineAligned: {
-    backgroundColor: '#27AE60',
-    borderColor: '#229954',
-    borderWidth: 1,
-  },
-  arrowHead3D: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 12,
-    borderRightWidth: 12,
-    borderBottomWidth: 24,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderBottomColor: '#7F8C8D',
-    position: 'absolute',
-    top: '12%',
-  },
-  arrowHeadAligned: {
-    borderBottomColor: '#27AE60',
-  },
-  centerDot3D: {
-    width: 16,
-    height: 16,
     borderRadius: 8,
-    backgroundColor: '#34495E',
-    position: 'absolute',
-    alignItems: 'center',
+    minWidth: 36,
+    minHeight: 36,
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#2C3E50',
-    zIndex: 12,
-  },
-  centerDotInner: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#E74C3C',
-  },
-  degreeMarker3D: {
-    position: 'absolute',
-    width: 2,
-    height: Math.min(screenWidth - 60, 320) * 0.9,
     alignItems: 'center',
   },
-  majorTick: { width: 3, height: 16, backgroundColor: '#2C3E50', borderRadius: 1.5 },
-  mediumTick: { width: 2, height: 11, backgroundColor: '#34495E', borderRadius: 1 },
-  minorTick: { width: 1, height: 6, backgroundColor: '#7F8C8D', borderRadius: 0.5 },
-  degreeText: {
-    fontSize: 9,
-    color: '#2C3E50',
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  surahName: {
+    fontSize: 24,
     fontWeight: '600',
-    marginTop: 18,
-    textAlign: 'center',
+  },
+  surahInfo: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  navigationBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  navButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  navButtonDisabled: {
+    opacity: 0.5,
+  },
+  navButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  navCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  navCenterText: {
+    fontSize: 12,
   },
   loadingContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 100,
   },
-  loadingText: {
-    fontSize: 16,
-    color: '#666666',
-    marginTop: 20,
-    marginBottom: 30,
+  versesContainer: {
+    padding: 16,
+    paddingTop: 8,
   },
-  getLocationButton: {
+  verseContainer: {
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 12,
+  },
+  verseHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#1B5E20',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 25,
+    marginBottom: 12,
   },
-  refreshButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  verseNumber: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
-    backgroundColor: '#1B5E20',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 25,
-    marginHorizontal: 20,
-    marginVertical: 20,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
-      android: { elevation: 4 },
-    }),
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  instructions: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 20,
-    marginTop: 10,
-    padding: 20,
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#4CAF50',
-  },
-  additionalInfo: {
-    backgroundColor: '#E8F5E9',
-    marginHorizontal: 20,
-    marginTop: 20,
-    padding: 20,
-    borderRadius: 12,
     alignItems: 'center',
   },
-  infoTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1B5E20',
-    marginBottom: 10,
-  },
-  infoText: {
+  verseNumberText: {
     fontSize: 14,
-    color: '#2E7D32',
-    marginBottom: 5,
+    fontWeight: '600',
+  },
+  bookmarkButton: {
+    padding: 4,
+  },
+  arabicText: {
+    fontSize: 26,
+    lineHeight: 40,
+    textAlign: 'right',
+    marginBottom: 12,
+  },
+  transliterationText: {
+    fontSize: 16,
+    lineHeight: 24,
+    marginBottom: 8,
+    fontStyle: 'italic',
+  },
+  translationText: {
+    fontSize: 18,
+    lineHeight: 26,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    height: '80%',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  searchInput: {
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    fontSize: 16,
+  },
+  surahItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  surahNumber: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  surahNumberText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  surahItemContent: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  surahItemName: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  surahItemInfo: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  surahItemArabic: {
+    fontSize: 18,
+    fontWeight: '500',
+  },
+  fullScreenModal: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 20,
+  },
+  settingsModal: {
+    borderRadius: 20,
+    padding: 20,
+    maxHeight: '80%',
+    minHeight: 400,
+  },
+  settingItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  settingLabel: {
+    fontSize: 16,
+  },
+  fontSizeControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  fontSizeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fontSizeValue: {
+    fontSize: 16,
+    minWidth: 30,
     textAlign: 'center',
   },
-  instructionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333333',
-    marginBottom: 10,
+  toggle: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    padding: 2,
   },
-  instructionText: {
+  toggleActive: {
+    justifyContent: 'flex-end',
+  },
+  toggleThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+  },
+  toggleThumbActive: {
+    alignSelf: 'flex-end',
+  },
+  standardText: {
+    fontFamily: 'System',
+  },
+  uthmanicText: {
+    fontFamily: 'System',
+    letterSpacing: 1,
+    lineHeight: 45,
+  },
+  scriptSelector: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  scriptButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  scriptButtonText: {
     fontSize: 14,
-    color: '#666666',
-    marginBottom: 5,
-  },
-  kaabaIndicator: {
-    position: 'absolute',
-    top: '2%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 8,
-  },
-  kaabaSymbol: {
-    width: 40,
-    height: 40,
-    backgroundColor: '#34495E',
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#2C3E50',
-  },
-  kaabaSymbolAligned: {
-    backgroundColor: '#27AE60',
-    borderColor: '#229954',
-  },
-  kaabaBase: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    borderRadius: 6,
-  },
-  kaabaDoor: {
-    position: 'absolute',
-    width: 6,
-    height: 12,
-    backgroundColor: '#F39C12',
-    borderRadius: 1,
-    bottom: 2,
-  },
-  kaabaText: {
-    fontSize: 18,
-    color: '#F39C12',
-  },
-  compassGlass: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    borderRadius: (Math.min(screenWidth - 60, 320) * 0.9) / 2,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-  },
-  compassLabels: {
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  compassTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-    marginBottom: 4,
-  },
-  compassSubtitle: {
-    fontSize: 14,
-    color: '#7F8C8D',
+    fontWeight: '500',
   },
 });
