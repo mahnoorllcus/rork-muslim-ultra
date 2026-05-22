@@ -28,7 +28,13 @@ export default function QiblaCompassScreen() {
   const [locationStatus, setLocationStatus] = useState<string>('Getting location...');
   const [distance, setDistance] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [deviceHeading, setDeviceHeading] = useState<number>(0);
+  
+  // Keep track of alignment status purely for styling conditions without re-rendering the whole UI array
+  const [isAligned, setIsAligned] = useState<boolean>(false);
+  
+  // Ref tracking values for direct native updates
+  const currentHeadingRef = useRef<number>(0);
+  const qiblaDirectionRef = useRef<number>(0);
   
   // Independent high-performance animation streams using native drivers
   const dialRotationAnim = useRef(new Animated.Value(0)).current;
@@ -54,29 +60,11 @@ export default function QiblaCompassScreen() {
     if (userLocation) {
       const qibla = calculateQiblaDirection(userLocation, KAABA_COORDS);
       setQiblaDirection(qibla);
+      qiblaDirectionRef.current = qibla;
       const dist = calculateDistance(userLocation, KAABA_COORDS);
       setDistance(dist);
     }
   }, [userLocation]);
-
-  useEffect(() => {
-    // 1. The main dial shifts inverse to the physical device heading to stick to true North
-    Animated.spring(dialRotationAnim, {
-      toValue: -deviceHeading,
-      useNativeDriver: true,
-      friction: 9,
-      tension: 40,
-    }).start();
-
-    // 2. The arrow shifts relative to both the target path and the current position tracking
-    const targetArrowRotation = qiblaDirection - deviceHeading;
-    Animated.spring(arrowRotationAnim, {
-      toValue: targetArrowRotation,
-      useNativeDriver: true,
-      friction: 9,
-      tension: 40,
-    }).start();
-  }, [deviceHeading, qiblaDirection]);
 
   useEffect(() => {
     const pulseAnimation = Animated.loop(
@@ -106,16 +94,44 @@ export default function QiblaCompassScreen() {
         return;
       }
 
-      // 80ms interval offers smooth 60fps response matrices without killing battery
-      Magnetometer.setUpdateInterval(80);
+      // 40ms to 60ms offers the smoothest UI response rate vectors
+      Magnetometer.setUpdateInterval(50);
       magnetometerSubscription.current = Magnetometer.addListener((data) => {
         const { x, y } = data;
-        let heading = Math.atan2(y, x) * (180 / Math.PI);
+        
+        // FIXED: Shifted to Math.atan2(-x, y) to match the mobile flat geographic coordinate plane
+        let heading = Math.atan2(-x, y) * (180 / Math.PI);
         heading = heading < 0 ? heading + 360 : heading;
         
-        // Android and iOS track sensor orientation fields differently at root kernel level
         const adjustedHeading = Platform.OS === 'ios' ? heading : (heading + 90) % 360;
-        setDeviceHeading(adjustedHeading);
+        currentHeadingRef.current = adjustedHeading;
+
+        // FIXED: Drive the animated stream value nodes smoothly and directly over the native channel bridge 
+        // without constantly calling state triggers that choke compilation passes.
+        Animated.spring(dialRotationAnim, {
+          toValue: -adjustedHeading,
+          useNativeDriver: true,
+          friction: 9,
+          tension: 50,
+        }).start();
+
+        const targetArrowRotation = qiblaDirectionRef.current - adjustedHeading;
+        Animated.spring(arrowRotationAnim, {
+          toValue: targetArrowRotation,
+          useNativeDriver: true,
+          friction: 9,
+          tension: 50,
+        }).start();
+
+        // Check alignment limits cleanly 
+        const currentOffset = Math.abs((qiblaDirectionRef.current - adjustedHeading + 360) % 360);
+        const aligned = currentOffset < 4 || currentOffset > 356;
+        
+        // Only run state change when the boundary crosses over to prevent continuous frame redraws
+        setIsAligned((prev) => {
+          if (prev !== aligned) return aligned;
+          return prev;
+        });
       });
     } catch (error) {
       console.error('Error starting magnetometer:', error);
@@ -201,10 +217,6 @@ export default function QiblaCompassScreen() {
     const index = Math.round(degrees / 22.5) % 16;
     return directions[index];
   };
-
-  // Determine if the user is accurately aligned within a strict 4-degree window
-  const currentOffset = Math.abs((qiblaDirection - deviceHeading + 360) % 360);
-  const isAligned = currentOffset < 4 || currentOffset > 356;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -312,8 +324,8 @@ export default function QiblaCompassScreen() {
                         { 
                           transform: [{ 
                             rotate: arrowRotationAnim.interpolate({
-                              inputRange: [-360, 360],
-                              outputRange: ['-360deg', '360deg']
+                              inputRange: [-720, 720],
+                              outputRange: ['-720deg', '720deg']
                             }) 
                           }] 
                         }
@@ -441,7 +453,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginHorizontal: 20,
     marginBottom: 20,
-    transition: 'background-color 0.3s ease',
     ...Platform.select({
       ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
       android: { elevation: 6 },
@@ -556,22 +567,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#BDC3C7',
     overflow: 'hidden',
-  },
-  northIndicator3D: {
-    position: 'absolute',
-    top: 15,
-    backgroundColor: '#E74C3C',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
-    zIndex: 10,
-    borderWidth: 2,
-    borderColor: '#C0392B',
-  },
-  northText3D: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: 'bold',
   },
   cardinalContainer: {
     position: 'absolute',
